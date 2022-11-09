@@ -6,14 +6,93 @@
 #include <string.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <stdarg.h>
+
+#include "./soccr/soccr.h"
 
 #define BUFFER_LENGTH 5
 
-int main(int argc, char *argv[]){
+#define handle_error(msg) do { perror(msg); exit(EXIT_FAILURE); } while(0)
+
+// Adopted From: https://stackoverflow.com/a/2358843/7189378
+ssize_t read_fd(int fd, void *ptr, size_t nbytes, int *recvfd)
+{
+    struct msghdr   msg;
+    struct iovec    iov[1];
+    ssize_t         n;
+    int             newfd;
+
+    union {
+      struct cmsghdr    cm;
+      char              control[CMSG_SPACE(sizeof(int))];
+    } control_un;
+    struct cmsghdr  *cmptr;
+
+    msg.msg_control = control_un.control;
+    msg.msg_controllen = sizeof(control_un.control);
+
+    msg.msg_name = NULL;
+    msg.msg_namelen = 0;
+
+    iov[0].iov_base = ptr;
+    iov[0].iov_len = nbytes;
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 1;
+
+    if ( (n = recvmsg(fd, &msg, 0)) <= 0)
+        return(n);
+
+    if ( (cmptr = CMSG_FIRSTHDR(&msg)) != NULL &&
+        cmptr->cmsg_len == CMSG_LEN(sizeof(int))) {
+        if (cmptr->cmsg_level != SOL_SOCKET)
+            //err_quit("control level != SOL_SOCKET");
+            printf("control level != SOL_SOCKET");
+        if (cmptr->cmsg_type != SCM_RIGHTS)
+            //err_quit("control type != SCM_RIGHTS");	
+            printf("control type != SCM_RIGHTS");
+        *recvfd = *((int *) CMSG_DATA(cmptr));
+    } else
+        *recvfd = -1;       /* descriptor was not passed */
+
+    return(n);
+}
+/* end read_fd */
+
+static
+int * recv_fd(int socket, int n) {
+//int recv_fd(int socket, int n) {
+        int *fds = malloc (n * sizeof(int));
+        //int fds;
+        struct msghdr msg = {0};
+        struct cmsghdr *cmsg;
+        char buf[CMSG_SPACE(n * sizeof(int))], dup[256];
+        memset(buf, '\0', sizeof(buf));
+        struct iovec io = { .iov_base = &dup, .iov_len = sizeof(dup) };
+
+        msg.msg_iov = &io;
+        msg.msg_iovlen = 1;
+        msg.msg_control = buf;
+        msg.msg_controllen = sizeof(buf);
+
+        if (recvmsg (socket, &msg, 0) < 0)
+                handle_error ("Failed to receive message");
+
+        cmsg = CMSG_FIRSTHDR(&msg);
+
+        memcpy (fds, (int *) CMSG_DATA(cmsg), n * sizeof(int));
+        //fds = *((int *) CMSG_DATA(cmsg));
+
+        return fds;
+}
+
+int main(int argc, char *argv[])
+{
     int listfd;
     int connfd;
+    struct libsoccr_sk *so, *so_rst;
+    struct libsoccr_sk_data data = {};
 
-    char buffer[BUFFER_LENGTH];
+    char buffer[BUFFER_LENGTH], *queue;
 
     /*
     * Create Sockets
@@ -35,18 +114,94 @@ int main(int argc, char *argv[]){
     * Listen for connections
     * and send random phrase on accept
     */
-    while(1){
+    while(1)
+    {
         connfd = accept(listfd, NULL, NULL);
         int length = BUFFER_LENGTH;
         receive = setsockopt(connfd, SOL_SOCKET, SO_RCVLOWAT,
                                           (char *)&length, sizeof(length));
-        receive = recv(connfd, buffer, sizeof(buffer), 0);
-        if (receive < 0)
-        {
-            printf("recv() failed");
-            //break;
-        }
+        //receive = recv(connfd, buffer, sizeof(buffer), 0);
+        //if (receive < 0)
+        //{
+        //    printf("recv() failed");
+        //    //break;
+        //}
         printf("Hit...\n");
+        char c;
+        int *fd_rec;
+        //int fd_rec;
+
+        //read_fd(connfd, &c, 5, &fd_rec);
+        fd_rec = recv_fd(connfd, 1);
+        //printf("FD: %d \n", fd_rec);
+	ssize_t nbytes;
+        for (int i=0; i<2; ++i) {
+                fprintf (stdout, "Sock fd %d\n", fd_rec[i]);
+                //while ((nbytes = read(fd_rec[i], buffer, sizeof(buffer))) > 0)
+                //        write(1, buffer, nbytes);
+                //*buffer = '\0';
+                // TODO: Need to change this one to include which particular socket we want
+		if (fd_rec[i] > 0) {
+		        so = libsoccr_pause(fd_rec[i]);	     
+		        printf("Paused\n");
+		       
+			int dsize = libsoccr_save(so, &data, sizeof(data));
+			if (dsize < 0) {
+				perror("libsoccr_save");
+				return -1;
+			}
+			printf("Saved\n");
+
+			// Restore
+			int rst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			if (rst == -1){
+				perror("Restore socket creation");
+				printf("Here fail\n");
+				return -1;
+			}
+			printf("Here\n");
+
+			struct sockaddr_in server_addr, my_addr;
+			// Finding addresses
+			getsockname(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
+			//getpeername(fd_rec[i], (struct sockaddr *) &server_addr, sizeof(server_addr));
+
+			getpeername(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
+			//getsockname(fd_rec[i], (struct sockaddr *) &server_addr, sizeof(server_addr));
+
+			//so_rst = libsoccr_pause(rst);
+			// These are like that because we are dumping the client before.
+			//libsoccr_set_addr(so_rst, 1, &my_addr, 0);
+			//libsoccr_set_addr(so_rst, 0, &server_addr, 0);
+			
+			//libsoccr_set_addr(so_rst, 1, &server_addr, 0);
+			//libsoccr_set_addr(so_rst, 0, &my_addr, 0);
+
+			//queue = libsoccr_get_queue_bytes(so, TCP_RECV_QUEUE, SOCCR_MEM_EXCL);
+			//libsoccr_set_queue_bytes(so_rst, TCP_RECV_QUEUE, queue, SOCCR_MEM_EXCL);
+			//queue = libsoccr_get_queue_bytes(so, TCP_SEND_QUEUE, SOCCR_MEM_EXCL);
+			//libsoccr_set_queue_bytes(so_rst, TCP_SEND_QUEUE, queue, SOCCR_MEM_EXCL);
+
+			//int ret = libsoccr_restore(so_rst, &data, dsize);
+			//if (ret)
+			//	perror("Restore fail");
+			//	return -1;
+			//printf("Restored\n");
+
+			//libsoccr_resume(so_rst);
+			libsoccr_resume(so);
+			printf("Resumed\n");
+		}
+		//close(sock);
+        }
+	//printf("FD Received");
+	
+	//int dsize = libsoccr_save(so, &data, sizeof(data));
+	//if (dsize < 0) {
+	//	perror("libsoccr_save");
+	//	return -1;
+	//}
+	//close(sock);
 
         close(connfd);
         sleep(1);

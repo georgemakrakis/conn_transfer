@@ -27,7 +27,8 @@ def mainSum():
         t = time.localtime()
         current_time = time.strftime("%H:%M:%S", t)    
         print(str(f"{current_time} - count: {counter}"))
-        time.sleep(10)
+        # time.sleep(10)
+        time.sleep(1)
 
 def sync():
     global counter

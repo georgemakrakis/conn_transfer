@@ -4,6 +4,7 @@ import time
 # HOST = "192.168.1.142"
 
 HOST = "172.20.0.2" # LB
+# HOST = "192.168.1.142" # LB
 # HOST = "172.20.0.3" # Server 1
 # HOST = "172.20.0.4" # Server 2
 PORT = 80
@@ -24,11 +25,12 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         # s.send(b"GET /counter HTTP/1.1\r\nHost:192.168.1.142\r\n\r\n")
         sent_time = time.time()
         s.send(b"GET /counter HTTP/1.1\r\nHost:172.20.0.2\r\n\r\n")
+        # s.send(b"GET /counter HTTP/1.1\r\nHost:192.168.1.142\r\n\r\n")
         # s.send(b"GET /counter HTTP/1.0\r\nHost:192.168.1.141\r\n\r\n")
         response = s.recv(4096)
         receive_time = time.time()
-        #print(response.decode())
+        print(response.decode())
         print(receive_time-sent_time)
 
-        time.sleep(0.1)
+        time.sleep(0.5)
 

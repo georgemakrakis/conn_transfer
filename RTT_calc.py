@@ -14,11 +14,14 @@ scapy.all.load_layer("http")
 for packet in PcapReader(sys.argv[1]):
     if packet.haslayer(TCP) and (packet.haslayer(HTTPRequest) or packet.haslayer(HTTPResponse)):
     # if 'IP' in packet:
+        # TODO: Add the IPs as parameters to the script
         if packet[IP].src == "172.20.0.5" and packet[IP].dst == "172.20.0.2":
+        # if packet[IP].src == "192.168.1.1" and packet[IP].dst == "192.168.1.142":
             if count == 0:
                 start = packet.time
                 count += 1
         if packet[IP].src == "172.20.0.2" and packet[IP].dst == "172.20.0.5":
+        # if packet[IP].src == "192.168.1.142" and packet[IP].dst == "192.168.1.1":
             if count == 1:
                 end = packet.time            
                 count = 0

@@ -25,3 +25,4 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             #client_unix.send(b"Client 1: hi\n")
             #client_unix.send_fds(client, data, [client.fileno()])
             send_fds(client_unix, b"AAAAA", [client.fileno()])
+            print("Sent FD")
