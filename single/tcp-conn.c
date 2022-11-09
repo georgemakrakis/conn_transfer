@@ -120,6 +120,7 @@ int main(void)
 	ret = libsoccr_restore(so_rst, &data, dsize);
 	if (ret) {
 		pr_perror("libsoccr_restore: %d", ret);
+		printf("Here \n");
 		return 1;
 	}
 

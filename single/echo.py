@@ -18,11 +18,14 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             data = client.recv(1024)
             if not data:
                 break
-            client.sendall(data)
-	   
+
             client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             client_unix.connect("/tmp/test")
             #client_unix.send(b"Client 1: hi\n")
             #client_unix.send_fds(client, data, [client.fileno()])
             send_fds(client_unix, b"AAAAA", [client.fileno()])
             print("Sent FD")
+
+            client.sendall(data)
+	   
+            

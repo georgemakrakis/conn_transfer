@@ -13,6 +13,13 @@
 #define BUFFER_LENGTH 5
 
 #define handle_error(msg) do { perror(msg); exit(EXIT_FAILURE); } while(0)
+#define pr_perror(fmt, ...) printf(fmt ": %m\n", ##__VA_ARGS__)
+
+struct person
+{
+    uint32_t  id;
+    uint32_t  salary;
+};
 
 // Adopted From: https://stackoverflow.com/a/2358843/7189378
 ssize_t read_fd(int fd, void *ptr, size_t nbytes, int *recvfd)
@@ -91,6 +98,7 @@ int main(int argc, char *argv[])
     int connfd;
     struct libsoccr_sk *so, *so_rst;
     struct libsoccr_sk_data data = {};
+    struct libsoccr_sk_data rst_data = {};
 
     char buffer[BUFFER_LENGTH], *queue;
 
@@ -134,6 +142,10 @@ int main(int argc, char *argv[])
         //read_fd(connfd, &c, 5, &fd_rec);
         fd_rec = recv_fd(connfd, 1);
         //printf("FD: %d \n", fd_rec);
+		
+
+
+
 	ssize_t nbytes;
         for (int i=0; i<2; ++i) {
                 fprintf (stdout, "Sock fd %d\n", fd_rec[i]);
@@ -146,27 +158,60 @@ int main(int argc, char *argv[])
 		        printf("Paused\n");
 		       
 			int dsize = libsoccr_save(so, &data, sizeof(data));
+			//printf("dumped size %ld \n", sizeof(data));
 			if (dsize < 0) {
 				perror("libsoccr_save");
 				return -1;
 			}
-			printf("Saved\n");
+			// TODO: save all the above to a file and read from it to restore the socket
+			FILE *file;
+     
+			file = fopen ("dump.dat", "w");
+			if (file == NULL)
+			{
+				fprintf(stderr, "\nError opened file\n");
+				exit (1);
+			}
+		 
+			//struct person input1 = {1, 324};
+			fwrite (&data, sizeof(data), 1, file);
+			//fwrite (&input1, sizeof(struct person), 1, outfile);
+		     
+			if(fwrite != 0)
+				printf("contents to file written successfully !\n");
+			else
+				printf("error writing file !\n");
+		 
+		 	fclose (file);
+			sleep(5);
+
+			file = fopen ("dump.dat", "r");
+			if (file == NULL)
+			{
+				fprintf(stderr, "\nError opening file\n");
+				exit (1);
+			}
+			
+			while(fread(&rst_data, sizeof(rst_data), 1, file))
+				printf ("Reading %ld data...\n", sizeof(rst_data));
+
+			fclose (file);
 
 			// Restore
-			int rst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-			if (rst == -1){
-				perror("Restore socket creation");
-				printf("Here fail\n");
-				return -1;
-			}
-			printf("Here\n");
+			//int rst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			//if (rst == -1){
+			//	perror("Restore socket creation");
+			//	printf("Here fail\n");
+			//	return -1;
+			//}
+			//printf("Here\n");
 
-			struct sockaddr_in server_addr, my_addr;
+			//struct sockaddr_in server_addr, my_addr;
 			// Finding addresses
-			getsockname(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
+			//getsockname(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
 			//getpeername(fd_rec[i], (struct sockaddr *) &server_addr, sizeof(server_addr));
 
-			getpeername(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
+			//getpeername(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
 			//getsockname(fd_rec[i], (struct sockaddr *) &server_addr, sizeof(server_addr));
 
 			//so_rst = libsoccr_pause(rst);
@@ -189,6 +234,14 @@ int main(int argc, char *argv[])
 			//printf("Restored\n");
 
 			//libsoccr_resume(so_rst);
+			int ret = libsoccr_restore(so, &rst_data, sizeof(rst_data));
+			if (ret){
+				//perror("Restore fail");
+				pr_perror("libsoccr_restore: %d", ret);
+				printf("Code: %d \n", ret);
+				//return 1;
+			}
+			
 			libsoccr_resume(so);
 			printf("Resumed\n");
 		}
