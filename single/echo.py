@@ -1,6 +1,7 @@
-import socket, array
+import socket, array, time
 
-HOST = "0.0.0.0"
+# HOST = "0.0.0.0"
+HOST = "172.20.141.120"
 PORT = 80
 
 
@@ -8,6 +9,7 @@ def send_fds(sock, msg, fds):
     return sock.sendmsg([msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((HOST, PORT))
     s.listen()
     client, addr = s.accept()
@@ -27,5 +29,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             print("Sent FD")
 
             client.sendall(data)
+
+            time.sleep(10)
+            # client.close()
+            # s.close()
 	   
             

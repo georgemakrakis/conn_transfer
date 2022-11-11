@@ -1,4 +1,5 @@
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <sys/un.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,11 +16,14 @@
 #define handle_error(msg) do { perror(msg); exit(EXIT_FAILURE); } while(0)
 #define pr_perror(fmt, ...) printf(fmt ": %m\n", ##__VA_ARGS__)
 
-struct person
+static void pr_printf(unsigned int level, const char *fmt, ...)
 {
-    uint32_t  id;
-    uint32_t  salary;
-};
+	va_list args;
+
+	va_start(args, fmt);
+	vprintf(fmt, args);
+	va_end(args);
+}
 
 // Adopted From: https://stackoverflow.com/a/2358843/7189378
 ssize_t read_fd(int fd, void *ptr, size_t nbytes, int *recvfd)
@@ -102,6 +106,8 @@ int main(int argc, char *argv[])
 
     char buffer[BUFFER_LENGTH], *queue;
 
+    libsoccr_set_log(10, pr_printf);
+
     /*
     * Create Sockets
     */
@@ -120,7 +126,6 @@ int main(int argc, char *argv[])
 
     /*
     * Listen for connections
-    * and send random phrase on accept
     */
     while(1)
     {
@@ -154,6 +159,17 @@ int main(int argc, char *argv[])
                 //*buffer = '\0';
                 // TODO: Need to change this one to include which particular socket we want
 		if (fd_rec[i] > 0) {
+			union libsoccr_addr client_addr, my_addr;
+			// Finding addresses before we pause
+			socklen_t addr_size = sizeof(my_addr);
+			getsockname(fd_rec[i], (struct sockaddr *)&my_addr, &addr_size);
+			
+			addr_size = sizeof(client_addr);
+			getpeername(fd_rec[i], (struct sockaddr *) &client_addr, &addr_size);
+			
+			client_addr.v4.sin_family = AF_INET;
+			my_addr.v4.sin_family = AF_INET;
+
 		        so = libsoccr_pause(fd_rec[i]);	     
 		        printf("Paused\n");
 		       
@@ -169,26 +185,26 @@ int main(int argc, char *argv[])
 			file = fopen ("dump.dat", "w");
 			if (file == NULL)
 			{
-				fprintf(stderr, "\nError opened file\n");
+				fprintf(stderr, "Error opening file\n");
 				exit (1);
 			}
-		 
-			//struct person input1 = {1, 324};
-			fwrite (&data, sizeof(data), 1, file);
-			//fwrite (&input1, sizeof(struct person), 1, outfile);
-		     
+	
+			fwrite (&data, sizeof(data), 1, file);	     
 			if(fwrite != 0)
 				printf("contents to file written successfully !\n");
 			else
 				printf("error writing file !\n");
 		 
 		 	fclose (file);
+
+			//close(fd_rec[i]);			
+
 			sleep(5);
 
 			file = fopen ("dump.dat", "r");
 			if (file == NULL)
 			{
-				fprintf(stderr, "\nError opening file\n");
+				fprintf(stderr, "Error opening file\n");
 				exit (1);
 			}
 			
@@ -197,29 +213,25 @@ int main(int argc, char *argv[])
 
 			fclose (file);
 
+            int client_close_stat = close(fd_rec[i]);
+            printf("Closed client socket as well... with %d\n", client_close_stat);
+
 			// Restore
-			//int rst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-			//if (rst == -1){
-			//	perror("Restore socket creation");
-			//	printf("Here fail\n");
-			//	return -1;
-			//}
-			//printf("Here\n");
+			int rst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			if (rst == -1){
+				perror("Restore socket creation");
+				printf("Here fail\n");
+				return -1;
+			}
+			printf("Here\n");
 
-			//struct sockaddr_in server_addr, my_addr;
-			// Finding addresses
-			//getsockname(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
-			//getpeername(fd_rec[i], (struct sockaddr *) &server_addr, sizeof(server_addr));
 
-			//getpeername(fd_rec[i], (struct sockaddr *) &my_addr, sizeof(my_addr));
-			//getsockname(fd_rec[i], (struct sockaddr *) &server_addr, sizeof(server_addr));
-
-			//so_rst = libsoccr_pause(rst);
+			so_rst = libsoccr_pause(rst);
 			// These are like that because we are dumping the client before.
 			//libsoccr_set_addr(so_rst, 1, &my_addr, 0);
-			//libsoccr_set_addr(so_rst, 0, &server_addr, 0);
+			//libsoccr_set_addr(so_rst, 0, &client_addr, 0);
 			
-			//libsoccr_set_addr(so_rst, 1, &server_addr, 0);
+			//libsoccr_set_addr(so_rst, 1, &client_addr, 0);
 			//libsoccr_set_addr(so_rst, 0, &my_addr, 0);
 
 			//queue = libsoccr_get_queue_bytes(so, TCP_RECV_QUEUE, SOCCR_MEM_EXCL);
@@ -234,6 +246,20 @@ int main(int argc, char *argv[])
 			//printf("Restored\n");
 
 			//libsoccr_resume(so_rst);
+
+			libsoccr_set_addr(so_rst, 1, &my_addr, 0);
+			libsoccr_set_addr(so_rst, 0, &client_addr, 0);
+			
+			char s[INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN] = "\0";
+			inet_ntop(AF_INET, &(my_addr.v4.sin_addr), s, INET_ADDRSTRLEN);
+			printf("IP address: %s\n", s);
+			
+			inet_ntop(AF_INET, &(client_addr.v4.sin_addr), s, INET_ADDRSTRLEN);
+			printf("IP address client: %s\n", s);
+
+			libsoccr_set_addr(so, 1, &client_addr, 0);
+			libsoccr_set_addr(so, 0, &my_addr, 0);
+
 			int ret = libsoccr_restore(so, &rst_data, sizeof(rst_data));
 			if (ret){
 				//perror("Restore fail");
@@ -242,19 +268,10 @@ int main(int argc, char *argv[])
 				//return 1;
 			}
 			
-			libsoccr_resume(so);
-			printf("Resumed\n");
+			//libsoccr_resume(so);
+			//printf("Resumed\n");
 		}
-		//close(sock);
         }
-	//printf("FD Received");
-	
-	//int dsize = libsoccr_save(so, &data, sizeof(data));
-	//if (dsize < 0) {
-	//	perror("libsoccr_save");
-	//	return -1;
-	//}
-	//close(sock);
 
         close(connfd);
         sleep(1);
