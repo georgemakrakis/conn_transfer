@@ -36,6 +36,7 @@ RUN service openresty start
 
 RUN mkdir /usr/local/openresty/nginx/sites
 COPY load-balancer.conf /usr/local/openresty/nginx/sites/load-balancer.conf
+COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 
 #COPY load-balancer.conf /etc/nginx/conf.d/load-balancer.conf
 #RUN rm /etc/nginx/sites-enabled/default
