@@ -56,8 +56,7 @@ RUN mkdir /root/img-dir
 
 # NOTE: We have to revert some of these routes to connect to internet,
 # but the NGINX tutorial has a way to forward internet traffic through the proxy
-#RUN route del default gw 172.20.0.1
-#RUN route del -net 172.20.0.0 gw 0.0.0.0 netmask 255.255.0.0 dev eth0
-#RUN route add default gw 172.20.0.2
+COPY transparency_cmds_server.sh /root/transparency_cmds_server.sh
+
 
 EXPOSE 8080
