@@ -10,7 +10,8 @@ RUN apt install software-properties-common -y
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt update
-RUN apt install curl nano make wget ssh sshpass python3.6 python3-pip python3.6-distutils -y
+RUN apt install curl nano make wget ssh lynx iproute2 net-tools sshpass python3.6 python3-pip python3.6-distutils -y
+RUN apt update
 
 # To dump the whole process
 RUN add-apt-repository ppa:criu/ppa
@@ -33,13 +34,30 @@ RUN pip3 install Flask-Limiter
 
 RUN echo 'root:123456' | chpasswd
 
+RUN adduser --disabled-password --gecos '' www
+#RUN RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+RUN wget https://archive.apache.org/dist/httpd/httpd-2.0.39.tar.gz
+RUN tar -xvf httpd-2.0.39.tar.gz
+RUN cd httpd-2.0.39/ && ./configure --prefix=/usr/local/apache2 && make -j2 && make install
+COPY httpd.conf /usr/local/apache2/conf/httpd.conf
+
+RUN /usr/local/apache2/bin/apachectl start
+
 WORKDIR /root
 COPY server2_counter.py /root/server2_counter.py
+COPY server1_HTTP.py /root/server1_HTTP.py
 
 
 COPY sshd_config /etc/ssh/sshd_config
 COPY migrate-auto.sh /root/migrate-auto.sh
 
 RUN mkdir /root/img-dir
+
+# NOTE: We have to revert some of these routes to connect to internet,
+# but the NGINX tutorial has a way to forward internet traffic through the proxy
+#RUN route del default gw 172.20.0.1
+#RUN route del -net 172.20.0.0 gw 0.0.0.0 netmask 255.255.0.0 dev eth0
+#RUN route add default gw 172.20.0.2
 
 EXPOSE 8080

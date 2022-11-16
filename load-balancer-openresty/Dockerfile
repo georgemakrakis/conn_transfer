@@ -6,7 +6,7 @@ RUN apt update  --fix-missing
 # RUN apt install nano nginx -y
 # RUN apt update
 
-RUN apt install nano build-essential libreadline-dev unzip -y
+RUN apt install nano build-essential iproute2 iptables libreadline-dev unzip -y
 RUN apt update
 RUN apt install lua5.3 liblua5.3-dev -y
 
@@ -37,11 +37,19 @@ RUN service openresty start
 RUN mkdir /usr/local/openresty/nginx/sites
 COPY load-balancer.conf /usr/local/openresty/nginx/sites/load-balancer.conf
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
+COPY nginx.conf.bak /usr/local/openresty/nginx/conf/nginx.conf.bak
+RUN mv /usr/local/openresty/nginx/conf/nginx.conf.default /usr/local/openresty/nginx/conf/nginx.conf.default.bak
+COPY rewrite-upstream.lua /usr/local/openresty/nginx/html/rewrite-upstream.lua
 
 #COPY load-balancer.conf /etc/nginx/conf.d/load-balancer.conf
 #RUN rm /etc/nginx/sites-enabled/default
 
 #RUN service nginx restart
+
+COPY transparency_cmds.sh /root/transparency_cmds.sh
+#RUN ip rule add fwmark 1 lookup 100
+#RUN ip route add local 0.0.0.0/0 dev lo table 100
+#RUN iptables -t mangle -A PREROUTING -p tcp -s 172.20.0.0/16 --sport 80 -j MARK --set-xmark 0x1/0xffffffff
 
 RUN echo 'print("hello world!")' > hello.lua
 

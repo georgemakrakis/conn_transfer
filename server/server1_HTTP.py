@@ -17,7 +17,7 @@ while True:
     request = client_connection.recv(1024).decode()
     print(request)
 
-    response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 1'
+    response = 'HTTP/1.1 200 OK Hello World, SERVER 1'
     client_connection.sendall(response.encode())
     client_connection.close()
 

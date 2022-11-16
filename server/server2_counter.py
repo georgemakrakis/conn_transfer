@@ -45,8 +45,9 @@ def startWebServer():
 @app.route("/")
 def main():
     global counter
-    current_time = time.strftime("%H:%M:%S", t)
-    return str(f"Server 1 \n{current_time} – count: {counter}")
+    # current_time = time.strftime("%H:%M:%S", t)
+    # return str(f"Server 1 \n{current_time} – count: {counter}")
+    return str(f"Server 1")
 
 # This route will be used to syncronize the two servers
 @app.route('/counter')
