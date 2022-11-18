@@ -41,6 +41,8 @@ RUN wget https://archive.apache.org/dist/httpd/httpd-2.0.39.tar.gz
 RUN tar -xvf httpd-2.0.39.tar.gz
 RUN cd httpd-2.0.39/ && ./configure --prefix=/usr/local/apache2 && make -j2 && make install
 COPY httpd.conf /usr/local/apache2/conf/httpd.conf
+RUN mv /usr/local/apache2/htdocs/index.html.en /usr/local/apache2/htdocs/index.html.en.bak
+COPY index.html.en /usr/local/apache2/htdocs/
 
 RUN /usr/local/apache2/bin/apachectl start
 

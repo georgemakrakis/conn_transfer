@@ -40,6 +40,7 @@ COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY nginx.conf.bak /usr/local/openresty/nginx/conf/nginx.conf.bak
 RUN mv /usr/local/openresty/nginx/conf/nginx.conf.default /usr/local/openresty/nginx/conf/nginx.conf.default.bak
 COPY rewrite-upstream.lua /usr/local/openresty/nginx/html/rewrite-upstream.lua
+COPY rewrite-upstream_2.lua /usr/local/openresty/nginx/html/rewrite-upstream_2.lua
 
 #COPY load-balancer.conf /etc/nginx/conf.d/load-balancer.conf
 #RUN rm /etc/nginx/sites-enabled/default
