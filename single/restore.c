@@ -25,6 +25,30 @@ static void pr_printf(unsigned int level, const char *fmt, ...)
 	va_end(args);
 }
 
+static void send_fd(int socket, int *fds, int n)
+{
+        struct msghdr msg = {0};
+        struct cmsghdr *cmsg;
+        char buf[CMSG_SPACE(n * sizeof(int))], dup[256];
+        memset(buf, '\0', sizeof(buf));
+        struct iovec io = { .iov_base = &dup, .iov_len = sizeof(dup) };
+
+        msg.msg_iov = &io;
+        msg.msg_iovlen = 1;
+        msg.msg_control = buf;
+        msg.msg_controllen = sizeof(buf);
+
+        cmsg = CMSG_FIRSTHDR(&msg);
+        cmsg->cmsg_level = SOL_SOCKET;
+        cmsg->cmsg_type = SCM_RIGHTS;
+        cmsg->cmsg_len = CMSG_LEN(n * sizeof(int));
+
+        memcpy ((int *) CMSG_DATA(cmsg), fds, n * sizeof (int));
+
+        if (sendmsg (socket, &msg, 0) < 0)
+                handle_error ("Failed to send message");
+}
+
 int main()
 {	
 	//union libsoccr_addr client_addr, my_addr;
@@ -57,7 +81,8 @@ int main()
 		printf("Here fail\n");
 		return -1;
 	}
-
+	
+	//so_rst = malloc(sizeof(struct libsoccr_sk *));
 	so_rst = libsoccr_pause(rst);
 	printf("Here\n");
 
@@ -76,7 +101,7 @@ int main()
 	client_addr.v4.sin_family = AF_INET;
 	client_addr.v4.sin_addr.s_addr = inet_addr("192.168.1.1");
 	// TODO: This is changed manually
-	client_addr.v4.sin_port = htons(2416);
+	client_addr.v4.sin_port = htons(58476);
 
 	//struct sockaddr_in localaddr;
 	union libsoccr_addr localaddr;
@@ -94,7 +119,21 @@ int main()
 		printf("Code: %d \n", ret);
 		//return 1;
 	}
-	
+
 	libsoccr_resume(so_rst);
 	printf("Resumed\n");
+	printf("Sock Descr: %d\n", so_rst->fd);
+
+	int listfd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if(listfd == -1)
+		exit(-1);
+
+	struct sockaddr_un saddr = {AF_UNIX, "/tmp/test"};
+	//unlink("/tmp/test");
+	if (connect(listfd, (struct sockaddr *) &saddr, sizeof(struct sockaddr_un)) == -1)
+                handle_error ("Failed to connect to socket");
+
+
+	send_fd(listfd, &(so_rst->fd), 1);
+	printf("Sent FD \n");
 }
