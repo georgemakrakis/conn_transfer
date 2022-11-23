@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 #include "./soccr/soccr.h"
 
@@ -99,9 +100,10 @@ int main()
 	//struct sockaddr_in client_addr;
 	union libsoccr_addr client_addr;
 	client_addr.v4.sin_family = AF_INET;
-	client_addr.v4.sin_addr.s_addr = inet_addr("192.168.1.1");
+	//client_addr.v4.sin_addr.s_addr = inet_addr("192.168.1.1");
+	client_addr.v4.sin_addr.s_addr = inet_addr("192.168.1.142");
 	// TODO: This is changed manually
-	client_addr.v4.sin_port = htons(58476);
+	client_addr.v4.sin_port = htons(47458);
 
 	//struct sockaddr_in localaddr;
 	union libsoccr_addr localaddr;
@@ -119,7 +121,9 @@ int main()
 		printf("Code: %d \n", ret);
 		//return 1;
 	}
-
+	
+	//sleep(20);
+	
 	libsoccr_resume(so_rst);
 	printf("Resumed\n");
 	printf("Sock Descr: %d\n", so_rst->fd);

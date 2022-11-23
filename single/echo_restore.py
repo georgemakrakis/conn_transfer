@@ -26,23 +26,41 @@ server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.bind((HOST, PORT))
 server_socket.listen(1)
-print('Listening on port %s ...' % PORT)
+print("Listening on port %s ..." % PORT)
 
 unix_client, unix_addr = unix_server.accept()
+msg2, fds_arr = recv_fds(unix_client, 5, 3)
+print("FDS: ", fds_arr[0])
 
-while True:
-    client, addr = server_socket.accept()
-    with client:
-        print(f"Connected by {addr}")   
-        data = client.recv(1024)
-        print(data)
-        msg2, fds_arr = recv_fds(unix_client, 5, 3)
-        print("FDS: ", fds_arr)
+# we use a client socket to send stuf back to the LB as PoC but it definetely does not work
+#lient_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        data = client.recv(1024).decode()
-        if not data:
-            break
-        response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 1'
-        client.sendall(response.encode())
+#print(f"Inheritable: {os.get_inheritable(fds_arr[0])}")
+#os.set_inheritable(fds_arr[0], 1)
+
+client_sock_fd = socket.fromfd(fds_arr[0], socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+print(type(client_sock_fd))
+client_sock_fd.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)
+#client_sock.bind(("192.168.1.142", 55418))
+
+#client_sock = socket.socket(_sock=client_sock_fd)
+response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 2'
+client_sock.sendall(response.encode())
+
+#while True:
+#    client, addr = server_socket.accept()
+#    with client:
+#        print(f"Connected by {addr}")   
+#        data = client.recv(1024)
+#        print(data)
+#        msg2, fds_arr = recv_fds(unix_client, 5, 3)
+#        print("FDS: ", fds_arr)
+#
+#        data = client.recv(1024).decode()
+#        if not data:
+#            break
+#
+#        response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 1'
+#        client.sendall(response.encode())
     
 
