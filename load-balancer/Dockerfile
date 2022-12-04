@@ -15,5 +15,7 @@ RUN rm /etc/nginx/sites-enabled/default
 
 RUN service nginx restart
 
+COPY python_load_balancer.py /root/python_load_balancer.py
+
 WORKDIR /root
 

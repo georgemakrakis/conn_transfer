@@ -40,25 +40,30 @@ RUN adduser --disabled-password --gecos '' www
 RUN wget https://archive.apache.org/dist/httpd/httpd-2.0.39.tar.gz
 RUN tar -xvf httpd-2.0.39.tar.gz
 RUN cd httpd-2.0.39/ && ./configure --prefix=/usr/local/apache2 && make -j2 && make install
-COPY httpd.conf /usr/local/apache2/conf/httpd.conf
+COPY server/httpd.conf /usr/local/apache2/conf/httpd.conf
 RUN mv /usr/local/apache2/htdocs/index.html.en /usr/local/apache2/htdocs/index.html.en.bak
-COPY index.html.en /usr/local/apache2/htdocs/
+COPY server/index.html.en /usr/local/apache2/htdocs/
 
 RUN /usr/local/apache2/bin/apachectl start
 
 WORKDIR /root
-COPY server2_counter.py /root/server2_counter.py
-COPY server1_HTTP.py /root/server1_HTTP.py
+COPY server/server2_counter.py /root/server2_counter.py
+COPY server/server1_HTTP.py /root/server1_HTTP.py
 
 
-COPY sshd_config /etc/ssh/sshd_config
-COPY migrate-auto.sh /root/migrate-auto.sh
+COPY server/sshd_config /etc/ssh/sshd_config
+COPY server/migrate-auto.sh /root/migrate-auto.sh
 
 RUN mkdir /root/img-dir
 
 # NOTE: We have to revert some of these routes to connect to internet,
 # but the NGINX tutorial has a way to forward internet traffic through the proxy
-COPY transparency_cmds_server.sh /root/transparency_cmds_server.sh
+COPY server/transparency_cmds_server.sh /root/transparency_cmds_server.sh
+
+
+# Individual socket migration folder
+RUN mkdir /root/single
+ADD single /root/single
 
 
 EXPOSE 8080
