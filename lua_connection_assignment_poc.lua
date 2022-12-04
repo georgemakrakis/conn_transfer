@@ -90,13 +90,16 @@ end
 
 -- print(_VERSION)
  
-local new_user = 1
+-- local new_user = 1
+local new_user = "192.168.1.2"
+local inc_user = 2
 local splits = 2
 -- while true do
 for i=1,6 do
    
    -- table.insert(users, new_user)
-   users[new_user] = new_user
+   -- users[new_user] = new_user
+   users[inc_user] = new_user
    -- if #users > 6 then
    --    splits = 3
    -- end
@@ -132,9 +135,15 @@ for i=1,6 do
    table.remove(assignments, 1);
    table.remove(assignments, 1);
 
-   print("Final assignments")
-   print(dump(assignments))
-   print("=======")
-   -- wait(2)
-   new_user = new_user + 1
+   print("Final assignments");
+   print(dump(assignments));
+   print("=======");
+   -- wait(2);
+
+   -- Simulate the increase of users (it can be anything)
+   inc_user = inc_user + 1;
+   new_user = new_user:sub(1, -2);
+   new_user = new_user .. inc_user;
+
+   
 end
