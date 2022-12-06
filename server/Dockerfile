@@ -10,7 +10,7 @@ RUN apt install software-properties-common -y
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt update
-RUN apt install curl nano make wget ssh lynx iproute2 net-tools sshpass python3.6 python3-pip python3.6-distutils libnl-3-dev libnet-dev -y
+RUN apt install curl nano make wget ssh lynx iproute2 net-tools iptables sshpass python3.6 python3-pip python3.6-distutils libnl-3-dev libnet-dev -y
 RUN apt update
 
 # To dump the whole process

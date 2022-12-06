@@ -107,14 +107,14 @@ static int tcp_repair_off(int fd)
 	return ret;
 }
 
-struct libsoccr_sk {
-	int fd;
-	unsigned flags;
-	char *recv_queue;
-	char *send_queue;
-	union libsoccr_addr *src_addr;
-	union libsoccr_addr *dst_addr;
-};
+// struct libsoccr_sk {
+// 	int fd;
+// 	unsigned flags;
+// 	char *recv_queue;
+// 	char *send_queue;
+// 	union libsoccr_addr *src_addr;
+// 	union libsoccr_addr *dst_addr;
+// };
 
 #define SK_FLAG_FREE_RQ 0x1
 #define SK_FLAG_FREE_SQ 0x2

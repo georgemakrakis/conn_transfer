@@ -1,7 +1,9 @@
-import os, socket, array
+import os, socket, array, time
 
 HOST = "0.0.0.0"
 PORT = 80
+
+TCP_REPAIR = 19
 
 def recv_fds(sock, msglen, maxfds):
     fds = array.array("i")   # Array of ints
@@ -28,6 +30,16 @@ server_socket.bind((HOST, PORT))
 server_socket.listen(1)
 print("Listening on port %s ..." % PORT)
 
+conn, addr = server_socket.accept()
+if addr[1] == 50630:
+    try:
+        conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
+    except Exception as ex:
+        print("Could not turn on TCP_REPAIR mode")
+        
+    conn.close()
+    print("closed")
+
 unix_client, unix_addr = unix_server.accept()
 msg2, fds_arr = recv_fds(unix_client, 5, 3)
 print("FDS: ", fds_arr[0])
@@ -45,7 +57,8 @@ client_sock_fd.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)
 
 #client_sock = socket.socket(_sock=client_sock_fd)
 response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 2'
-client_sock.sendall(response.encode())
+time.sleep(10)
+client_sock_fd.sendall(response.encode())
 
 #while True:
 #    client, addr = server_socket.accept()

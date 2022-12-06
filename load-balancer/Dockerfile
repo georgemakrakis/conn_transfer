@@ -11,7 +11,7 @@ RUN apt update
 RUN apt install software-properties-common -y
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt update
-RUN apt install python3.6 python3-pip python3.6-distutils
+RUN apt install python3.6 python3-pip python3.6-distutils iptables
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
 RUN update-alternatives --config python3
 

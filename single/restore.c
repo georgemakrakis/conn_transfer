@@ -101,14 +101,16 @@ int main()
 	union libsoccr_addr client_addr;
 	client_addr.v4.sin_family = AF_INET;
 	//client_addr.v4.sin_addr.s_addr = inet_addr("192.168.1.1");
-	client_addr.v4.sin_addr.s_addr = inet_addr("192.168.1.142");
+	// client_addr.v4.sin_addr.s_addr = inet_addr("192.168.1.142");
+	client_addr.v4.sin_addr.s_addr = inet_addr("172.20.0.2");
 	// TODO: This is changed manually
-	client_addr.v4.sin_port = htons(47458);
+	client_addr.v4.sin_port = htons(50630);
 
 	//struct sockaddr_in localaddr;
 	union libsoccr_addr localaddr;
 	localaddr.v4.sin_family = AF_INET;
-	localaddr.v4.sin_addr.s_addr = inet_addr("192.168.1.143");
+	// localaddr.v4.sin_addr.s_addr = inet_addr("192.168.1.143");
+	localaddr.v4.sin_addr.s_addr = inet_addr("172.20.0.4");
 	localaddr.v4.sin_port = htons(80);
 
 	libsoccr_set_addr(so_rst, 1, &localaddr, 0);
