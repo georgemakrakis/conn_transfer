@@ -164,7 +164,6 @@ class LoadBalancer(object):
         # lots of add-on features can be added here
         remote_socket = self.flow_table[sock]
         # TODO: Here we need to manipulate the data to have the IP of the client, but data includes only HTTP
-        # We try to create custom packet using the client's IP but it does not work since we need to send it using a socket.
         dst = sock.getpeername()[0]
         pak = TCPPacket(
             sock.getsockname()[0],
@@ -174,12 +173,10 @@ class LoadBalancer(object):
             0b000011000,  # PUSH, ACK
             data
         )
-        print(pak.build())
+        #print(pak.build())
         remote_socket.send(data)
-        
         #new_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
         #new_sock.sendto(pak.build(), remote_socket.getpeername())
-
         print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
 
     def on_close(self, sock):
@@ -190,6 +187,12 @@ class LoadBalancer(object):
 
         self.sockets.remove(sock)
         self.sockets.remove(ss_socket)
+
+        new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        new_sock.bind(('192.168.1.142', 50630))
+        new_sock.connect(('192.168.1.143', 80))
+        print(f'New {new_sock.getsockname()}')
 
         sock.close()  # close connection with client
         ss_socket.close()  # close connection with server

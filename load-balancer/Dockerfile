@@ -7,6 +7,17 @@ RUN apt install nano nginx -y
 
 RUN service nginx start
 
+RUN apt update
+RUN apt install software-properties-common -y
+RUN add-apt-repository ppa:deadsnakes/ppa
+RUN apt update
+RUN apt install python3.6 python3-pip python3.6-distutils
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
+RUN update-alternatives --config python3
+
+# RUN rm /usr/bin/python
+RUN ln -s /usr/bin/python3 /usr/bin/python 
+
 #WORKDIR /root
 #COPY server2_counter.py /root/server2_counter.py
 

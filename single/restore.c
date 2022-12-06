@@ -121,12 +121,6 @@ int main()
 		printf("Code: %d \n", ret);
 		//return 1;
 	}
-	
-	//sleep(20);
-	
-	libsoccr_resume(so_rst);
-	printf("Resumed\n");
-	printf("Sock Descr: %d\n", so_rst->fd);
 
 	int listfd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if(listfd == -1)
@@ -140,4 +134,10 @@ int main()
 
 	send_fd(listfd, &(so_rst->fd), 1);
 	printf("Sent FD \n");
+
+	//sleep(20);
+	
+	libsoccr_resume(so_rst);
+	printf("Resumed\n");
+	printf("Sock Descr: %d\n", so_rst->fd);
 }
