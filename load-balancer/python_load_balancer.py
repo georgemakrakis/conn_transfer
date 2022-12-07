@@ -190,8 +190,10 @@ class LoadBalancer(object):
 
         new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        new_sock.bind(('192.168.1.142', 50630))
-        new_sock.connect(('192.168.1.143', 80))
+        new_sock.bind(('172.20.0.2', 50630))
+        # new_sock.bind(('192.168.1.142', 50630))
+        new_sock.connect(('172.20.0.4', 80))
+        # new_sock.connect(('192.168.1.143', 80))
         print(f'New {new_sock.getsockname()}')
 
         sock.close()  # close connection with client
