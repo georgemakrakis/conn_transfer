@@ -113,7 +113,6 @@ class LoadBalancer(object):
         # lots of add-on features can be added here
         remote_socket = self.flow_table[sock]
 
-        new_data = None
         # NOTE: Hardcoded for now but this can be scaled later based on number of requests
         if sock.getpeername()[0] == "172.20.0.3":
             # print("SUP")

@@ -1,7 +1,8 @@
 import socket, array, time, os
+import subprocess
 
 # HOST = "0.0.0.0"
-HOST = "172.20.141.120"
+HOST = "172.20.0.3"
 PORT = 80
 
 
@@ -20,9 +21,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             data = client.recv(1024)
             if not data:
                 break
-            
-            # mig_data = "migrated"
-            # os.write(client.fileno(), mig_data.encode())
+
+            # NOTE: Here we had the os.write for the socket descriptor
+
             # time.sleep(10)
 
             client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -31,6 +32,17 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             #client_unix.send_fds(client, data, [client.fileno()])
             send_fds(client_unix, b"AAAAA", [client.fileno()])
             print("Sent FD")
+
+            cmd_list = ["sshpass", "-p", "123456", "scp",
+                        "-o", "StrictHostKeyChecking=no", "dump.dat", "dump_inq.dat", "dump_outq.dat", "root@172.20.0.4:/root/single"]                    
+
+            subprocess.call(cmd_list)
+            print("Copied dumped files...")
+
+            # TODO: maybe need to wait here for a bit?
+
+            mig_data = "migrated"
+            os.write(client.fileno(), mig_data.encode())
 
             client.sendall(data)
 
