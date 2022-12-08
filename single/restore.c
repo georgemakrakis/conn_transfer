@@ -177,6 +177,9 @@ int main()
 	if(listfd == -1)
 		exit(-1);
 
+
+	// Let's take the data, RECV_Q and SEND_Q from the migrated socket and port them to the current one using the transferred files
+
 	struct sockaddr_un saddr = {AF_UNIX, "/tmp/test"};
 	//unlink("/tmp/test");
 	if (connect(listfd, (struct sockaddr *) &saddr, sizeof(struct sockaddr_un)) == -1)

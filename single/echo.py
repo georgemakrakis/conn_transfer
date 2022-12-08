@@ -21,7 +21,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             if not data:
                 break
             
-            os.write(client.fileno(), data)
+            # mig_data = "migrated"
+            # os.write(client.fileno(), mig_data.encode())
             # time.sleep(10)
 
             client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
