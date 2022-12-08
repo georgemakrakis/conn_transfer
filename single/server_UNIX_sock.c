@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
 
 
 
-	ssize_t nbytes;
+	    ssize_t nbytes;
         for (int i=0; i<2; ++i) {
                 fprintf (stdout, "Sock fd %d\n", fd_rec[i]);
                 //while ((nbytes = read(fd_rec[i], buffer, sizeof(buffer))) > 0)
@@ -192,6 +192,42 @@ int main(int argc, char *argv[])
 			fwrite (&data, sizeof(data), 1, file);	     
 			if(fwrite != 0)
 				printf("contents to file written successfully !\n");
+			else
+				printf("error writing file !\n");
+		 
+		 	fclose (file);
+
+            // Write the RECV and SEND queues to files
+            char buffer2 [100], *inq;
+            char buffer3 [100], *outq;
+            inq = libsoccr_get_queue_bytes(so, TCP_RECV_QUEUE, 0);
+            outq = libsoccr_get_queue_bytes(so, TCP_SEND_QUEUE, 0);
+
+            file = fopen ("dump_inq.dat", "w");
+			if (file == NULL)
+			{
+				fprintf(stderr, "Error opening file\n");
+				exit (1);
+			}
+	
+			fwrite (&inq, sizeof(inq), 1, file);	     
+			if(fwrite != 0)
+				printf("contents to file inq written successfully !\n");
+			else
+				printf("error writing file !\n");
+		 
+		 	fclose (file);
+
+            file = fopen ("dump_outq.dat", "w");
+			if (file == NULL)
+			{
+				fprintf(stderr, "Error opening file\n");
+				exit (1);
+			}
+	
+			fwrite (&outq, sizeof(outq), 1, file);	     
+			if(fwrite != 0)
+				printf("contents to file inq written successfully !\n");
 			else
 				printf("error writing file !\n");
 		 

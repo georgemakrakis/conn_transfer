@@ -1,4 +1,4 @@
-import socket, array, time
+import socket, array, time, os
 
 # HOST = "0.0.0.0"
 HOST = "172.20.141.120"
@@ -20,6 +20,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             data = client.recv(1024)
             if not data:
                 break
+            
+            os.write(client.fileno(), data)
+            # time.sleep(10)
 
             client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             client_unix.connect("/tmp/test")

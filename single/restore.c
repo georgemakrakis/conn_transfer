@@ -15,7 +15,7 @@
 #define handle_error(msg) do { perror(msg); exit(EXIT_FAILURE); } while(0)
 #define pr_perror(fmt, ...) printf(fmt ": %m\n", ##__VA_ARGS__)
 
-#define BUFFER_LENGTH 5
+#define BUFFER_LENGTH 11
 
 static void pr_printf(unsigned int level, const char *fmt, ...)
 {
@@ -57,7 +57,7 @@ int main()
 	struct libsoccr_sk_data data = {};
 	struct libsoccr_sk_data rst_data = {};
 
-	char buffer[BUFFER_LENGTH], *queue;
+	char buffer[BUFFER_LENGTH] = "0123456789", *queue;
 
 	libsoccr_set_log(10, pr_printf);
 
@@ -72,6 +72,45 @@ int main()
 
 	while(fread(&rst_data, sizeof(rst_data), 1, file))
 		printf ("Reading %ld data...\n", sizeof(rst_data));
+
+	fclose (file);
+
+	file = fopen ("dump.dat", "r");
+	if (file == NULL)
+	{
+		fprintf(stderr, "\nError opening file\n");
+		exit (1);
+	}
+
+	while(fread(&rst_data, sizeof(rst_data), 1, file))
+		printf ("Reading %ld data...\n", sizeof(rst_data));
+
+	fclose (file);
+
+	char buffer2 [100], *inq;
+	char buffer3 [100], *outq;
+
+	file = fopen ("dump_inq.dat", "r");
+	if (file == NULL)
+	{
+		fprintf(stderr, "\nError opening file\n");
+		exit (1);
+	}
+
+	while(fread(&inq, sizeof(inq), 1, file))
+		printf ("Reading %ld data...\n", sizeof(inq));
+
+	fclose (file);
+
+	file = fopen ("dump_inq.dat", "r");
+	if (file == NULL)
+	{
+		fprintf(stderr, "\nError opening file\n");
+		exit (1);
+	}
+
+	while(fread(&outq, sizeof(outq), 1, file))
+		printf ("Reading %ld data...\n", sizeof(outq));
 
 	fclose (file);
 
@@ -116,6 +155,9 @@ int main()
 	libsoccr_set_addr(so_rst, 1, &localaddr, 0);
 	libsoccr_set_addr(so_rst, 0, &client_addr, 0);
 
+	libsoccr_set_queue_bytes(so_rst, TCP_SEND_QUEUE, outq, SOCCR_MEM_EXCL);
+	libsoccr_set_queue_bytes(so_rst, TCP_RECV_QUEUE, inq, SOCCR_MEM_EXCL);
+
 	int ret = libsoccr_restore(so_rst, &rst_data, sizeof(rst_data));
 	if (ret){
 		//perror("Restore fail");
@@ -123,6 +165,13 @@ int main()
 		printf("Code: %d \n", ret);
 		//return 1;
 	}
+
+	queue = libsoccr_get_queue_bytes(so_rst, TCP_RECV_QUEUE, SOCCR_MEM_EXCL);
+	printf("Data RECV after: %s \n", queue);
+
+	queue = libsoccr_get_queue_bytes(so_rst, TCP_SEND_QUEUE, SOCCR_MEM_EXCL);
+	printf("Data SEND after: %s \n", queue);
+
 
 	int listfd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if(listfd == -1)

@@ -3,7 +3,17 @@ import os, socket, array, time
 HOST = "0.0.0.0"
 PORT = 80
 
-TCP_REPAIR = 19
+TCP_REPAIR          = 19
+TCP_REPAIR_QUEUE    = 20
+TCP_QUEUE_SEQ       = 21
+TCP_REPAIR_OPTIONS  = 22
+TCPOPT_MSS = 2
+TCPOPT_WINDOW = 3
+TCPOPT_TIMESTAMP = 8
+TCPOPT_SACK_PERM = 4
+
+TCP_RECV_QUEUE = 1
+TCP_SEND_QUEUE = 2
 
 def recv_fds(sock, msglen, maxfds):
     fds = array.array("i")   # Array of ints
@@ -34,6 +44,31 @@ conn, addr = server_socket.accept()
 if addr[1] == 50630:
     try:
         conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
+
+        # print(f"New SEQ num: {conn.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)}")
+
+        # conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        # conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, TCP_SEND_QUEUE)
+        # seq = struct.pack('=L', int(conn[src].seq))
+        # conn.setsockopt(socket.SOL_TCP, TCP_QUEUE_SEQ, seq)
+
+        # conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, TCP_RECV_QUEUE)
+        # ack = struct.pack('=L', int(conn[dst].seq))
+        # conn.setsockopt(socket.SOL_TCP, TCP_QUEUE_SEQ, ack)
+
+        # conn.bind((conn[src].addr, conn[src].port))
+        # conn.connect((conn[dst].addr, conn[dst].port))
+
+        # opt = ''
+        # opt += struct.pack('=LHH', TCPOPT_WINDOW,
+        #                     int(conn[src].wscale), int(conn[dst].wscale))
+        # opt += struct.pack('=LL', TCPOPT_MSS, int(conn[src].mss))
+
+        # conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_OPTIONS, opt)
+
+        # conn.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
+
     except Exception as ex:
         print("Could not turn on TCP_REPAIR mode")
         
@@ -55,6 +90,9 @@ print(type(client_sock_fd))
 client_sock_fd.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)
 #client_sock.bind(("192.168.1.142", 55418))
 
+print("Mig socket data")
+print(client_sock_fd.recv(4096))
+
 #client_sock = socket.socket(_sock=client_sock_fd)
 response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 2'
 time.sleep(10)
@@ -75,5 +113,3 @@ client_sock_fd.sendall(response.encode())
 #
 #        response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 1'
 #        client.sendall(response.encode())
-    
-
