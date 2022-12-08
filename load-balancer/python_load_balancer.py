@@ -6,64 +6,13 @@ import select
 import random
 from itertools import cycle
 
-import struct, array
+import struct, array, time
 from scapy import *
-
-class TCPPacket:
-    def __init__(self,
-                 src_host,
-                 src_port,
-                 dst_host,
-                 dst_port,
-                 flags=0,
-                 data=None):
-        self.src_host = src_host
-        self.src_port = src_port
-        self.dst_host = dst_host
-        self.dst_port = dst_port
-        self.flags = flags
-        self.data = data
-
-    @staticmethod
-    def get_chksum(packet):
-        if len(packet) % 2 != 0:
-            packet += b'\0'
-        res = sum(array.array("H", packet))
-        res = (res >> 16) + (res & 0xffff)
-        res += res >> 16
-        return (~res) & 0xffff
-
-    def build(self):
-        packet = struct.pack(
-            '!HHIIBBHHH',
-            self.src_port,  # Source Port
-            self.dst_port,  # Destination Port
-            0,              # Sequence Number
-            0,              # Acknoledgement Number
-            5 << 4,         # Data Offset
-            self.flags,     # Flags
-            8192,           # Window
-            0,              # Checksum (initial value)
-            0,               # Urgent pointer
-        )
-        pseudo_hdr = struct.pack(
-           '!4s4sHH',
-            socket.inet_aton(self.src_host),    # Source Address
-            socket.inet_aton(self.dst_host),    # Destination Address
-            socket.IPPROTO_TCP,                 # Protocol ID
-            len(packet)                         # TCP Length
-        )
-
-        final_pak = b''.join([pseudo_hdr,packet, self.data])
-        checksum = self.get_chksum(final_pak)
-        packet = packet[:16] + struct.pack('H', checksum) + packet[18:] + self.data
-        return packet
-
 
 # dumb netcat server, short tcp connection
 # $ ~  while true ; do nc -l 8888 < server1.html; done
 # $ ~  while true ; do nc -l 9999 < server2.html; done
-SERVER_POOL = [('192.168.1.147', 80), ('192.168.1.143',80)]
+SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 
 # dumb python socket echo server, long tcp connection
 # $ ~  while  python server.py
@@ -163,21 +112,29 @@ class LoadBalancer(object):
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
         remote_socket = self.flow_table[sock]
-        # TODO: Here we need to manipulate the data to have the IP of the client, but data includes only HTTP
-        dst = sock.getpeername()[0]
-        pak = TCPPacket(
-            sock.getsockname()[0],
-            sock.getsockname()[1],
-            sock.getpeername()[0],
-            sock.getpeername()[1],
-            0b000011000,  # PUSH, ACK
-            data
-        )
-        #print(pak.build())
+
+        new_data = None
+        # NOTE: Hardcoded for now but this can be scaled later based on number of requests
+        if sock.getpeername()[0] == "172.20.0.3":
+            # print("SUP")
+            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            new_sock.bind(('172.20.0.2', 50630))
+            new_sock.connect(('172.20.0.4', 80))
+            print(f'New {new_sock.getsockname()}')
+
+            # Shall we substitute the previous client socket and flow with the new one?
+            time.sleep(25)
+            response = new_sock.recv(4096)
+            if response:
+                data = response
+            
+            print(f"Proxy received data {response.decode()}")
+            new_sock.close()
+        
         remote_socket.send(data)
-        #new_sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
-        #new_sock.sendto(pak.build(), remote_socket.getpeername())
         print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
+
 
     def on_close(self, sock):
         print('client %s has disconnected' % (sock.getpeername(),))
@@ -187,18 +144,10 @@ class LoadBalancer(object):
 
         self.sockets.remove(sock)
         self.sockets.remove(ss_socket)
-
-        new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        new_sock.bind(('172.20.0.2', 50630))
-        # new_sock.bind(('192.168.1.142', 50630))
-        new_sock.connect(('172.20.0.4', 80))
-        # new_sock.connect(('192.168.1.143', 80))
-        print(f'New {new_sock.getsockname()}')
+        
 
         sock.close()  # close connection with client
         ss_socket.close()  # close connection with server
-
         del self.flow_table[sock]
         del self.flow_table[ss_socket]
 
