@@ -7,7 +7,6 @@ import random
 from itertools import cycle
 
 import struct, array, time
-from scapy import *
 
 # dumb netcat server, short tcp connection
 # $ ~  while true ; do nc -l 8888 < server1.html; done

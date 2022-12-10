@@ -3,8 +3,8 @@ import time
 # HOST = "192.168.1.141"
 # HOST = "192.168.1.142"
 
-#HOST = "172.20.0.2" # LB
-HOST = "192.168.1.142" # LB
+HOST = "172.20.0.2" # LB
+# HOST = "192.168.1.142" # LB
 # HOST = "172.20.0.3" # Server 1
 # HOST = "172.20.0.4" # Server 2
 PORT = 80
