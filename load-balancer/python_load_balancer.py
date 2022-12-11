@@ -126,18 +126,20 @@ class LoadBalancer(object):
             #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
             new_sock.bind(('172.20.0.2', 50630))
-            # NOTE: This should also be decided in a more intelligent way.
             new_sock.connect(('172.20.0.4', 80))
             print(f'New {new_sock.getsockname()}')
-            # TODO: we can send something
+
+            # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
+            # the migration data (can be anything)
+            new_sock.send("mig_signal_2".encode())
 
             # time.sleep(25)
-
+            
             response = new_sock.recv(4096)
             if response:
                 data = response
             
-            print(f"Proxy received data {response.decode()}")
+            # print(f"Proxy received data {response.decode()}")
             new_sock.close()
             
         remote_socket.send(data)

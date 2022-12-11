@@ -170,8 +170,8 @@ int main(int argc, char *argv[])
 			client_addr.v4.sin_family = AF_INET;
 			my_addr.v4.sin_family = AF_INET;
 
-		        so = libsoccr_pause(fd_rec[i]);	     
-		        printf("Paused\n");
+			so = libsoccr_pause(fd_rec[i]);	     
+			printf("Paused\n");
 		       
 			int dsize = libsoccr_save(so, &data, sizeof(data));
 			//printf("dumped size %ld \n", sizeof(data));
@@ -233,36 +233,41 @@ int main(int argc, char *argv[])
 		 
 		 	fclose (file);
 
+			printf("Resuming...\n");
+			libsoccr_resume(so);
+
+
 			//close(fd_rec[i]);			
 
 			// sleep(5);
 
-			file = fopen ("dump.dat", "r");
-			if (file == NULL)
-			{
-				fprintf(stderr, "Error opening file\n");
-				exit (1);
-			}
+			// file = fopen ("dump.dat", "r");
+			// if (file == NULL)
+			// {
+			// 	fprintf(stderr, "Error opening file\n");
+			// 	exit (1);
+			// }
 			
-			while(fread(&rst_data, sizeof(rst_data), 1, file))
-				printf ("Reading %ld data...\n", sizeof(rst_data));
+			// while(fread(&rst_data, sizeof(rst_data), 1, file))
+			// 	printf ("Reading %ld data...\n", sizeof(rst_data));
 
-			fclose (file);
+			// fclose (file);
 
-            int client_close_stat = close(fd_rec[i]);
-            printf("Closed client socket as well... with %d\n", client_close_stat);
+            // int client_close_stat = close(fd_rec[i]);
+            // printf("Closed client socket as well... with %d\n", client_close_stat);
 
-			// Restore
-			int rst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-			if (rst == -1){
-				perror("Restore socket creation");
-				printf("Here fail\n");
-				return -1;
-			}
-			printf("Here\n");
+			// // Restore
+			// int rst = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			// if (rst == -1){
+			// 	perror("Restore socket creation");
+			// 	printf("Here fail\n");
+			// 	return -1;
+			// }
+			// printf("Here\n");
 
 
-			so_rst = libsoccr_pause(rst);
+			// so_rst = libsoccr_pause(rst);
+
 			// These are like that because we are dumping the client before.
 			//libsoccr_set_addr(so_rst, 1, &my_addr, 0);
 			//libsoccr_set_addr(so_rst, 0, &client_addr, 0);
@@ -283,26 +288,27 @@ int main(int argc, char *argv[])
 
 			//libsoccr_resume(so_rst);
 
-			libsoccr_set_addr(so_rst, 1, &my_addr, 0);
-			libsoccr_set_addr(so_rst, 0, &client_addr, 0);
+			// ===============
+			// libsoccr_set_addr(so_rst, 1, &my_addr, 0);
+			// libsoccr_set_addr(so_rst, 0, &client_addr, 0);
 			
-			char s[INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN] = "\0";
-			inet_ntop(AF_INET, &(my_addr.v4.sin_addr), s, INET_ADDRSTRLEN);
-			printf("IP address: %s\n", s);
+			// char s[INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN] = "\0";
+			// inet_ntop(AF_INET, &(my_addr.v4.sin_addr), s, INET_ADDRSTRLEN);
+			// printf("IP address: %s\n", s);
 			
-			inet_ntop(AF_INET, &(client_addr.v4.sin_addr), s, INET_ADDRSTRLEN);
-			printf("IP address client: %s\n", s);
+			// inet_ntop(AF_INET, &(client_addr.v4.sin_addr), s, INET_ADDRSTRLEN);
+			// printf("IP address client: %s\n", s);
 
-			libsoccr_set_addr(so, 1, &client_addr, 0);
-			libsoccr_set_addr(so, 0, &my_addr, 0);
+			// libsoccr_set_addr(so, 1, &client_addr, 0);
+			// libsoccr_set_addr(so, 0, &my_addr, 0);
 
-			int ret = libsoccr_restore(so, &rst_data, sizeof(rst_data));
-			if (ret){
-				//perror("Restore fail");
-				pr_perror("libsoccr_restore: %d", ret);
-				printf("Code: %d \n", ret);
-				//return 1;
-			}
+			// int ret = libsoccr_restore(so, &rst_data, sizeof(rst_data));
+			// if (ret){
+			// 	//perror("Restore fail");
+			// 	pr_perror("libsoccr_restore: %d", ret);
+			// 	printf("Code: %d \n", ret);
+			// 	//return 1;
+			// }
 			
 			//libsoccr_resume(so);
 			//printf("Resumed\n");

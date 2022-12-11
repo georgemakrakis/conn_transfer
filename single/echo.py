@@ -26,8 +26,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
     server_socket.listen()
     print("Listening on port %s ..." % PORT)
     
-    conn, addr = server_socket.accept()
     while True:
+        conn, addr = server_socket.accept()
         with conn:
             print(f"Connected by {addr}")
        
