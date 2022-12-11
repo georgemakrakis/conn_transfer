@@ -42,6 +42,8 @@ class LoadBalancer(object):
     flow_table = dict()
     sockets = list()
 
+    migration_triggered = False
+
     def __init__(self, ip, port, algorithm='random'):
         self.ip = ip
         self.port = port
@@ -112,24 +114,32 @@ class LoadBalancer(object):
         # lots of add-on features can be added here
         remote_socket = self.flow_table[sock]
 
+        # NOTE: here we should check whether we migrate based on our algo
+        # that will give us a list for IPs to migrate. For now I leave the hardcoded IP
+        if sock.getpeername()[0] == "172.20.0.5":
+            data = "migration".encode()
+            print("migration is initiated...")
+
         # NOTE: Hardcoded for now but this can be scaled later based on number of requests
         if sock.getpeername()[0] == "172.20.0.3":
-            # print("SUP")
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
             new_sock.bind(('172.20.0.2', 50630))
+            # NOTE: This should also be decided in a more intelligent way.
             new_sock.connect(('172.20.0.4', 80))
             print(f'New {new_sock.getsockname()}')
+            # TODO: we can send something
 
-            # Shall we substitute the previous client socket and flow with the new one?
-            time.sleep(25)
+            # time.sleep(25)
+
             response = new_sock.recv(4096)
             if response:
                 data = response
             
             print(f"Proxy received data {response.decode()}")
             new_sock.close()
-        
+            
         remote_socket.send(data)
         print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
 

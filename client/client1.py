@@ -14,15 +14,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.connect((HOST, PORT))
     print("Connected")
     s.send(b"GET / HTTP/1.1\r\nHost:192.168.1.142\r\n\r\n")
-    time.sleep(100)
+    # time.sleep(30)
     response = s.recv(4096)
     print(response.decode())
     
-    # s.send(b"GET / HTTP/1.1\r\nHost:192.168.1.142\r\n\r\n")
-    # time.sleep(100)
-    # response = s.recv(4096)
-    # print(response.decode())
-
     # for i in range(1, 1001):
     #     #count += 1
     #     #s.sendall(f"hello {count}".encode())

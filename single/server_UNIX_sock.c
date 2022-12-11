@@ -235,7 +235,7 @@ int main(int argc, char *argv[])
 
 			//close(fd_rec[i]);			
 
-			sleep(5);
+			// sleep(5);
 
 			file = fopen ("dump.dat", "r");
 			if (file == NULL)
@@ -310,7 +310,8 @@ int main(int argc, char *argv[])
         }
 
         close(connfd);
-        sleep(1);
+		
+        // sleep(1);
     }
 
     exit(0);
