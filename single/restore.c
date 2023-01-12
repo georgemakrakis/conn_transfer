@@ -63,7 +63,7 @@ int main()
 
 	FILE *file;
 
-	file = fopen ("dump.dat", "r");
+	file = fopen ("/migvolume1/dump.dat", "r");
 	if (file == NULL)
 	{
 		fprintf(stderr, "\nError opening file\n");
@@ -75,10 +75,10 @@ int main()
 
 	fclose (file);
 
-	file = fopen ("dump.dat", "r");
+	file = fopen ("/migvolume1/dump.dat", "r");
 	if (file == NULL)
 	{
-		fprintf(stderr, "\nError opening file\n");
+		fprintf(stderr, "\nError opening file 1\n");
 		exit (1);
 	}
 
@@ -90,10 +90,10 @@ int main()
 	char buffer2 [100], *inq;
 	char buffer3 [100], *outq;
 
-	file = fopen ("dump_inq.dat", "r");
+	file = fopen ("/migvolume1/dump_inq.dat", "r");
 	if (file == NULL)
 	{
-		fprintf(stderr, "\nError opening file\n");
+		fprintf(stderr, "\nError opening file 2\n");
 		exit (1);
 	}
 
@@ -102,10 +102,10 @@ int main()
 
 	fclose (file);
 
-	file = fopen ("dump_inq.dat", "r");
+	file = fopen ("/migvolume1/dump_outq.dat", "r");
 	if (file == NULL)
 	{
-		fprintf(stderr, "\nError opening file\n");
+		fprintf(stderr, "\nError opening file 3\n");
 		exit (1);
 	}
 

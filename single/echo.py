@@ -77,12 +77,12 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
                 # NOTE: here also we need to have dynamically the server that the files
                 # will be sent to.
-                cmd_list = ["sshpass", "-p", "123456", "scp",
-                            "-o", "StrictHostKeyChecking=no", 
-                            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
-                            "root@172.20.0.4:/root/single"]                    
+                #cmd_list = ["sshpass", "-p", "123456", "scp",
+                #            "-o", "StrictHostKeyChecking=no", 
+                #            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
+                #            "root@172.20.0.4:/root/single"]                    
 
-                subprocess.call(cmd_list)
+                #subprocess.call(cmd_list)
                 print("Copied dumped files...")
 
                 # TODO: maybe need to wait here for a bit?

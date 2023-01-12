@@ -182,7 +182,7 @@ int main(int argc, char *argv[])
 			// TODO: save all the above to a file and read from it to restore the socket
 			FILE *file;
      
-			file = fopen ("dump.dat", "w");
+			file = fopen ("/migvolume1/dump.dat", "w");
 			if (file == NULL)
 			{
 				fprintf(stderr, "Error opening file\n");
@@ -203,7 +203,7 @@ int main(int argc, char *argv[])
             inq = libsoccr_get_queue_bytes(so, TCP_RECV_QUEUE, 0);
             outq = libsoccr_get_queue_bytes(so, TCP_SEND_QUEUE, 0);
 
-            file = fopen ("dump_inq.dat", "w");
+            file = fopen ("/migvolume1/dump_inq.dat", "w");
 			if (file == NULL)
 			{
 				fprintf(stderr, "Error opening file\n");
@@ -218,7 +218,7 @@ int main(int argc, char *argv[])
 		 
 		 	fclose (file);
 
-            file = fopen ("dump_outq.dat", "w");
+            file = fopen ("/migvolume1/dump_outq.dat", "w");
 			if (file == NULL)
 			{
 				fprintf(stderr, "Error opening file\n");

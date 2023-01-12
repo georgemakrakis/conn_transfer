@@ -59,14 +59,14 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 try:
                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
 
-                    inq = None
-                    with open("dump_inq.dat", mode="rb") as inq_file:
+                    iinq = None
+                    with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
                         inq = inq_file.read()
 
                     print(inq)
 
                     outq = None
-                    with open("dump_outq.dat", mode="rb") as outq_file:
+                    with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
                         outq = outq_file.read()
 
                     print(outq)
@@ -98,12 +98,12 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
                 # NOTE: here also we need to have dynamically the server that the files
                 # will be sent to.
-                cmd_list = ["sshpass", "-p", "123456", "scp",
-                            "-o", "StrictHostKeyChecking=no", 
-                            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
-                            "root@172.20.0.3:/root/single"]                    
+                # cmd_list = ["sshpass", "-p", "123456", "scp",
+                #             "-o", "StrictHostKeyChecking=no", 
+                #             "dump.dat", "dump_inq.dat", "dump_outq.dat", 
+                #             "root@172.20.0.3:/root/single"]                    
 
-                subprocess.call(cmd_list)
+                # subprocess.call(cmd_list)
                 print("Copied dumped files...")
 
                 # TODO: maybe need to wait here for a bit?
