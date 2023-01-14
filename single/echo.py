@@ -40,13 +40,13 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
 
                     inq = None
-                    with open("dump_inq.dat", mode="rb") as inq_file:
+                    with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
                         inq = inq_file.read()
 
                     print(inq)
 
                     outq = None
-                    with open("dump_outq.dat", mode="rb") as outq_file:
+                    with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
                         outq = outq_file.read()
 
                     print(outq)

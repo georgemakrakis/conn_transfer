@@ -117,6 +117,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
             # print("FDS: ", fds_arr[0])
 
             response = 'HTTP/1.0 200 OK\n\nHello World, SERVER 2'
+            # response = 'migration'
             
             # time.sleep(10)
 
