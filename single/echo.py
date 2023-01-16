@@ -8,6 +8,8 @@ PORT = 80
 TCP_REPAIR          = 19
 TCP_REPAIR_QUEUE    = 20
 
+migration_counter = 0
+
 def recv_fds(sock, msglen, maxfds):
     fds = array.array("i")   # Array of ints
     msg, ancdata, flags, addr = sock.recvmsg(msglen, socket.CMSG_LEN(maxfds * fds.itemsize))
@@ -21,6 +23,8 @@ def send_fds(sock, msg, fds):
     return sock.sendmsg([msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+    # global migration_counter
+
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
     server_socket.listen()
@@ -35,7 +39,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
             if not data:
                 break
 
-            if addr[1] == 50630:
+            if addr[1] == (50630 + migration_counter):
                 try:
                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
 
@@ -62,6 +66,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
                     # Let's proceed with sending the new data
                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 0)
+
+                    migration_counter += 1
 
                 except Exception as ex:
                     print("Could not use TCP_REPAIR mode")

@@ -16,6 +16,7 @@ TCPOPT_SACK_PERM = 4
 TCP_RECV_QUEUE = 1
 TCP_SEND_QUEUE = 2
 
+migration_counter = 0
 
 def send_fds(sock, msg, fds):
     return sock.sendmsg([msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
@@ -40,6 +41,8 @@ unix_server.listen(1)
 print("Unix Socket Listening...")
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+    # global migration_counter
+
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
     server_socket.listen(1)
@@ -55,7 +58,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
             if not data:
                 break
 
-            if addr[1] == 50630:
+            if addr[1] == (50630 + migration_counter):
                 try:
                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
 
@@ -82,6 +85,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
                     # Let's proceed with sending the new data
                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 0)
+
+                    migration_counter += 1
 
                 except Exception as ex:
                     print("Could not use TCP_REPAIR mode")

@@ -19,7 +19,7 @@ SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 
 
 IPs = ["172.20.0.3", "172.20.0.4"]
-MIGRATION_TIMES = 4
+MIGRATION_TIMES = 3
 migration_counter = 0
 latest_server = ""
 initiated_migration = False
@@ -131,29 +131,24 @@ class LoadBalancer(object):
         # that will give us a list of client IPs to migrate. For now I leave the hardcoded IP
         if sock.getpeername()[0] == "172.20.0.5":
             data = "migration".encode()
-            print("migration is initiated...")
+            print(f"migration {migration_counter} is initiated...")
 
         # NOTE: Hardcoded for now but this can be scaled later based on number of requests
         # if sock.getpeername()[0] == "172.20.0.3":
+       
+            
         if sock.getpeername()[0] == IPs[migration_counter % len(IPs)]:
 
             print("Here")
-            
-            if migration_counter != MIGRATION_TIMES:
 
-                # if initiated_migration:
-                #     data = "migration".encode()
-                #     print(f"migration {migration_counter + 1} is initiated...")
-                #     initiate_migration = True
-                #     # remote_socket.send(data)
-                #     migration_counter += 1
-                # else:
-
+            new_socks = []
+            for i in range(MIGRATION_TIMES):
                 new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
-                new_sock.bind(('172.20.0.2', 50630))
-                new_sock.connect((IPs[(migration_counter % len(IPs))+1], 80))
+                # NOTE: The following is a stupid way to have pre-agreed port with the other servers
+                new_sock.bind(('172.20.0.2', 50630 + migration_counter))
+                new_sock.connect((IPs[((migration_counter) % len(IPs))], 80))
                 print(f'New {new_sock.getsockname()}')
 
                 # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
@@ -163,52 +158,20 @@ class LoadBalancer(object):
                 # time.sleep(25)
                 
                 response = new_sock.recv(4096)
-                if response:
-                    data = response
+                # if response:
+                #     data = response
                 
                 # print(f"Proxy received data {response.decode()}")
                 new_sock.close()
 
                 new_sock_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                new_sock_2.connect((IPs[(migration_counter % len(IPs))+1], 80))
+                new_sock_2.connect((IPs[((migration_counter) % len(IPs))], 80))
                 data = "migration".encode()
                 new_sock_2.send(data)
                 response = new_sock_2.recv(4096)
                 if response:
+                    data = response
                     print(f"BBB {response.decode()}")
-                print(f"migration {migration_counter + 1 } is initiated...")
-
-                migration_counter += 1
-
-                # SECOND TIME
-
-                new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-
-                new_sock.bind(('172.20.0.2', 50630))
-                new_sock.connect((IPs[(migration_counter + 1) % len(IPs)], 80))
-                print(f'New {new_sock.getsockname()}')
-
-                # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
-                # the migration data (can be anything)
-                new_sock.send("mig_signal_2".encode())
-
-                # time.sleep(25)
-                
-                response = new_sock.recv(4096)
-                if response:
-                    data = response
-                
-                # print(f"Proxy received data {response.decode()}")
-                new_sock.close()
-
-                new_sock_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                new_sock_2.connect((IPs[(migration_counter + 1) % len(IPs)], 80))
-                data = "migration".encode()
-                new_sock_2.send(data)
-                response = new_sock_2.recv(4096)
-                if response:
-                    print(f"BBB 2 {response.decode()}")
                 print(f"migration {migration_counter + 1 } is initiated...")
 
                 migration_counter += 1
