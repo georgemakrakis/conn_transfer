@@ -19,7 +19,7 @@ SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 
 
 IPs = ["172.20.0.3", "172.20.0.4"]
-MIGRATION_TIMES = 3
+MIGRATION_TIMES = 5
 migration_counter = 0
 latest_server = ""
 initiated_migration = False
@@ -138,11 +138,13 @@ class LoadBalancer(object):
        
             
         if sock.getpeername()[0] == IPs[migration_counter % len(IPs)]:
+            
 
             print("Here")
 
             new_socks = []
             for i in range(MIGRATION_TIMES):
+                migration_counter += 1
                 new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
@@ -174,7 +176,7 @@ class LoadBalancer(object):
                     print(f"BBB {response.decode()}")
                 print(f"migration {migration_counter + 1 } is initiated...")
 
-                migration_counter += 1
+                # migration_counter += 1 # Should that go on the top after the FOR?
 
                 # return
                 
@@ -190,6 +192,7 @@ class LoadBalancer(object):
             
         remote_socket.send(data)
         print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
+        # migration_counter = 0
 
 
     def on_close(self, sock):

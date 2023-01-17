@@ -1,8 +1,8 @@
 import socket, array, time, os
 import subprocess
 
-# HOST = "0.0.0.0"
-HOST = "172.20.0.3"
+HOST = "0.0.0.0"
+# HOST = "172.20.0.3"
 PORT = 80
 
 TCP_REPAIR          = 19
@@ -95,8 +95,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
                 # mig_data = "migrated"
                 # os.write(client.fileno(), mig_data.encode())
-           
+            # print(f"WILL SEND: {data}")
             conn.sendall(data)
+            # conn.sendall(f"{data.decode()}_{migration_counter}".encode())
 
             # time.sleep(10)
             
