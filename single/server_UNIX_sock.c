@@ -227,7 +227,7 @@ int main(int argc, char *argv[])
 	
 			fwrite (&outq, sizeof(outq), 1, file);	     
 			if(fwrite != 0)
-				printf("contents to file inq written successfully !\n");
+				printf("contents to file outq written successfully !\n");
 			else
 				printf("error writing file !\n");
 		 
