@@ -19,7 +19,7 @@ SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 
 
 IPs = ["172.20.0.3", "172.20.0.4"]
-MIGRATION_TIMES = 5
+MIGRATION_TIMES = 1
 migration_counter = 0
 latest_server = ""
 initiated_migration = False
@@ -151,7 +151,7 @@ class LoadBalancer(object):
                 # NOTE: The following is a stupid way to have pre-agreed port with the other servers
                 new_sock.bind(('172.20.0.2', 50630 + migration_counter))
                 new_sock.connect((IPs[((migration_counter) % len(IPs))], 80))
-                print(f'New {new_sock.getsockname()}')
+                print(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
 
                 # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
                 # the migration data (can be anything)
@@ -160,8 +160,9 @@ class LoadBalancer(object):
                 # time.sleep(25)
                 
                 response = new_sock.recv(4096)
-                # if response:
+                if response:
                 #     data = response
+                    print(f"AAA {response.decode()}")
                 
                 # print(f"Proxy received data {response.decode()}")
                 new_sock.close()
@@ -189,7 +190,10 @@ class LoadBalancer(object):
             # to the client.
             # TODO: We also need to add the counter to each request to show the
             # correct number of migrations between machines
-            
+        
+        # data = f"HTTP/1.1 200 OK\n{data.decode()}".encode()
+        # data = f"HTTP/1.1 200 OK\n\n".encode()
+
         remote_socket.send(data)
         print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
         # migration_counter = 0
