@@ -18,11 +18,17 @@ SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 # SERVER_POOL = [('localhost', 6666)]
 
 
-IPs = ["172.20.0.3", "172.20.0.4"]
+# IPs = ["172.20.0.3", "172.20.0.4"]
+IPs = ["172.20.0.4", "172.20.0.3"]
 MIGRATION_TIMES = 1
 migration_counter = 0
 latest_server = ""
 initiated_migration = False
+
+# Should that be a list inside the class?
+client_socket = None
+
+prev_server_socket = None
 
 ITER = cycle(SERVER_POOL)
 def round_robin(iter):
@@ -47,6 +53,9 @@ class LoadBalancer(object):
 
     flow_table = dict()
     sockets = list()
+    migration_flow_table = dict()
+    migration_sockets = list()
+
 
     migration_triggered = False
 
@@ -85,7 +94,16 @@ class LoadBalancer(object):
                         else:
                             self.on_close(sock)
                             break
-                    except:
+                    except ConnectionResetError as ex:
+                        print(f"ConnectionResetError {ex}")                        
+                        # continue
+                        break
+                    except OSError as ex:
+                        # print(f"OSError {ex}")
+                        # continue
+                        break
+                    except Exception as ex:
+                        print(ex)
                         sock.on_close(sock)
                         break
 
@@ -121,79 +139,117 @@ class LoadBalancer(object):
         global migration_counter
         global latest_server
         global initiated_migration
+        global client_socket
+        global prev_server_socket
 
         print('recving packets: %-20s ==> %-20s, data: %s' % (sock.getpeername(), sock.getsockname(), [data]))
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
-        remote_socket = self.flow_table[sock]
+
+        # Check for clients that we need to migrate/handle connections
+        if sock.getpeername()[0] not in IPs:
+            remote_socket = self.flow_table[sock]
 
         # NOTE: here we should check whether we migrate based on our algo
         # that will give us a list of client IPs to migrate. For now I leave the hardcoded IP
         if sock.getpeername()[0] == "172.20.0.5":
             data = "migration".encode()
             print(f"migration {migration_counter} is initiated...")
+            client_socket = sock
+
+            remote_socket.send(data)
+            # prev_server_socket = remote_socket
+            print('2 sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
+            return
 
         # NOTE: Hardcoded for now but this can be scaled later based on number of requests
         # if sock.getpeername()[0] == "172.20.0.3":
        
-            
-        if sock.getpeername()[0] == IPs[migration_counter % len(IPs)]:
-            
-
-            print("Here")
-
-            new_socks = []
-            for i in range(MIGRATION_TIMES):
-                migration_counter += 1
-                new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                #new_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-
-                # NOTE: The following is a stupid way to have pre-agreed port with the other servers
-                new_sock.bind(('172.20.0.2', 50630 + migration_counter))
-                new_sock.connect((IPs[((migration_counter) % len(IPs))], 80))
-                print(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
-
-                # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
-                # the migration data (can be anything)
-                new_sock.send("mig_signal_2".encode())
-
-                # time.sleep(25)
-                
-                response = new_sock.recv(4096)
-                if response:
-                #     data = response
-                    print(f"AAA {response.decode()}")
-                
-                # print(f"Proxy received data {response.decode()}")
-                new_sock.close()
-
-                new_sock_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                new_sock_2.connect((IPs[((migration_counter) % len(IPs))], 80))
-                data = "migration".encode()
-                new_sock_2.send(data)
-                response = new_sock_2.recv(4096)
-                if response:
-                    data = response
-                    print(f"BBB {response.decode()}")
-                print(f"migration {migration_counter + 1 } is initiated...")
-
-                # migration_counter += 1 # Should that go on the top after the FOR?
-
-                # return
-                
-            # TODO: To generalize the above we need to have some steps that
-            # will do the migration between machines N-times
-            # will keep track of the IP that had the latest migration,
-            # the signals names that indicate that the recovery of the socket 
-            # will take place.
-            # When all the migrations have taken place, we send the data back
-            # to the client.
-            # TODO: We also need to add the counter to each request to show the
-            # correct number of migrations between machines
+        # We also need to check the messages/signals here.    
+        # if sock.getpeername()[0] == IPs[migration_counter % len(IPs)]:
         
-        # data = f"HTTP/1.1 200 OK\n{data.decode()}".encode()
-        # data = f"HTTP/1.1 200 OK\n\n".encode()
+        if (data.find("migration".encode()) != -1) and (migration_counter != MIGRATION_TIMES):
+        # if (data.find("migration".encode()) != -1):
+            
+            print("Here 1")
 
+            
+            
+            # if prev_server_socket:                
+            #     prev_server_socket.close()
+            #     print("Prev sock closed 1")
+        
+            # migration_counter += 1
+            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+            # NOTE: The following is a stupid way to have pre-agreed port with the other servers.
+            # Not needed so we might remove it completely. Leave for now cause it is good for debugging.
+            new_sock.bind(('172.20.0.2', 50630 + migration_counter))
+            new_sock.connect((IPs[((migration_counter) % len(IPs))], 80))
+            print(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
+
+            # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
+            # the migration data (can be anything)
+            new_sock.send("mig_signal_2".encode())
+            
+            self.sockets.append(new_sock)
+            self.migration_sockets.append(new_sock)
+
+            self.flow_table[new_sock] = new_sock
+            # self.flow_table[ss_socket] = client_socket
+
+
+            prev_server_socket = new_sock
+
+            # TODO: Need to keep track of these things to close them later on.
+            # self.migration_flow_table[new_sock] = (new_sock_2, client_socket)
+            # self.migration_flow_table[new_sock_2] = (new_sock_2, client_socket)
+
+            # We want to close the socket that send us the data
+            # sock.close()
+
+            return
+            
+        # elif (data.find("mig_signal_2".encode()) != -1) and (migration_counter != MIGRATION_TIMES):
+        elif (data.find("mig_signal_2".encode()) != -1):
+            print("Here 2")
+
+            # if prev_server_socket:                
+            #     prev_server_socket.close()
+            #     print("Prev sock closed 2")
+
+            new_sock_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_sock_2.connect((IPs[((migration_counter) % len(IPs))], 80))
+            print(f'New {new_sock_2.getsockname()} with {new_sock_2.getpeername()}')
+
+            # new_sock_2 = self.migration_flow_table[sock][0]
+            data = "migration".encode()
+            new_sock_2.send(data)
+
+            migration_counter += 1
+
+            self.sockets.append(new_sock_2)
+            self.migration_sockets.append(new_sock_2)
+
+            # print(f"NEW SOCK {new_sock_2.getsockname()} --> {new_sock_2.getpeername()}")
+            # self.flow_table[new_sock_2] = new_sock_2
+
+            prev_server_socket = new_sock_2
+
+            # sock.close()
+
+            return
+
+        else:
+            # remote_socket = self.migration_flow_table[sock][1] 
+            # prev_server_socket.close()
+            print("Here 3")       
+            remote_socket = client_socket
+
+        if migration_counter == MIGRATION_TIMES:
+            migration_counter = 0          
+
+            
         remote_socket.send(data)
         print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
         # migration_counter = 0
@@ -203,16 +259,24 @@ class LoadBalancer(object):
         print('client %s has disconnected' % (sock.getpeername(),))
         print('='*41+'flow end'+'='*40)
 
+        # if (sock.getpeername()[0] in IPs):
+        #     self.sockets.remove(sock)
+        #     sock.close()
+        #     return
+
         ss_socket = self.flow_table[sock]
 
         self.sockets.remove(sock)
-        self.sockets.remove(ss_socket)
+
+        if sock not in self.migration_sockets: 
+            self.sockets.remove(ss_socket)
         
 
         sock.close()  # close connection with client
         ss_socket.close()  # close connection with server
         del self.flow_table[sock]
-        del self.flow_table[ss_socket]
+        if sock not in self.migration_sockets: 
+            del self.flow_table[ss_socket]
 
     def select_server(self, server_list, algorithm):
         if algorithm == 'random':
