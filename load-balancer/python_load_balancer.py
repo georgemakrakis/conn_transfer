@@ -20,13 +20,13 @@ SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 
 # IPs = ["172.20.0.3", "172.20.0.4"]
 IPs = ["172.20.0.4", "172.20.0.3"]
-MIGRATION_TIMES = 1
+MIGRATION_TIMES = 2
 migration_counter = 0
 latest_server = ""
 initiated_migration = False
 
 # Should that be a list inside the class?
-client_socket = None
+# client_socket = None
 
 prev_server_socket = None
 
@@ -55,6 +55,8 @@ class LoadBalancer(object):
     sockets = list()
     migration_flow_table = dict()
     migration_sockets = list()
+
+    client_socket = None
 
 
     migration_triggered = False
@@ -139,7 +141,7 @@ class LoadBalancer(object):
         global migration_counter
         global latest_server
         global initiated_migration
-        global client_socket
+        # global client_socket
         global prev_server_socket
 
         print('recving packets: %-20s ==> %-20s, data: %s' % (sock.getpeername(), sock.getsockname(), [data]))
@@ -155,7 +157,7 @@ class LoadBalancer(object):
         if sock.getpeername()[0] == "172.20.0.5":
             data = "migration".encode()
             print(f"migration {migration_counter} is initiated...")
-            client_socket = sock
+            self.client_socket = sock
 
             remote_socket.send(data)
             # prev_server_socket = remote_socket
@@ -244,13 +246,14 @@ class LoadBalancer(object):
             # remote_socket = self.migration_flow_table[sock][1] 
             # prev_server_socket.close()
             print("Here 3")       
-            remote_socket = client_socket
+            remote_socket = self.client_socket
 
         if migration_counter == MIGRATION_TIMES:
             migration_counter = 0          
 
             
-        remote_socket.send(data)
+        # remote_socket.send(data)
+        remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
         print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
         # migration_counter = 0
 
@@ -290,7 +293,7 @@ class LoadBalancer(object):
 if __name__ == '__main__':
     try:
         # LoadBalancer('localhost', 5555, 'round robin').start()
-        LoadBalancer('0.0.0.0', 80, 'round robin').start()
+        LoadBalancer('172.20.0.2', 80, 'round robin').start()
     except KeyboardInterrupt:
         print("Ctrl C - Stopping load_balancer")
         sys.exit(1)

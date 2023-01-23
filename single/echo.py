@@ -2,7 +2,7 @@ import socket, array, time, os
 import subprocess, fcntl, select
 
 # HOST = "0.0.0.0"
-HOST = "172.20.0.4"
+HOST = "172.20.0.3"
 PORT = 80
 
 TCP_REPAIR          = 19
@@ -39,7 +39,6 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
             if addr[0] == "172.20.0.2":
                 print("waiting to recv")
 
-
                 data = conn.recv(1024)
                 if not data:
                     print("NO DATA RECV")
@@ -49,8 +48,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 if (data.find("mig_signal_2".encode()) != -1):
                     try:
                         conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
-
-                        print("Restoring...")
+                        
+                        print("Restoring")
 
                         inq = None
                         with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
@@ -121,21 +120,31 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
                     # mig_data = "migrated"
                     # os.write(client.fileno(), mig_data.encode())
-
-                response = "HTTP/1.1 200 OK\n\nHello World, SERVER 2"
-                # print(f"WILL SEND: {response.encode()}")
-                # conn.sendall(response.encode())
-
+                
                 print(f"WILL SEND: {data}")
-
                 try:
                     # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
                     conn.sendall(data)
 
+                    # sent = conn.send(data)
+                    # if sent == 0 or sent < len(data):
+                    #     print(f"Problem with conn {conn.getsockname()} --> {conn.getpeername()}")
+
+                    conn.close()
+
                 except OSError as ex:
                     print(f"OSError {ex}")
-                # conn.sendall(f"{data.decode()}_{migration_counter}".encode())
 
+                    print("Trying one more time")
+                    conn.sendall(data)
+                    # sent = conn.send(data)
+                    # if sent == 0 or sent < len(data):
+                    #     print(f"Problem with conn {conn.getsockname()} --> {conn.getpeername()}")
+
+
+                    # print(f"SOCK {conn.getsockname()} --> {conn.getpeername()}")
+                # conn.sendall(f"{data.decode()}_{migration_counter}".encode())
+            
             else:
                 conn.close()
 
