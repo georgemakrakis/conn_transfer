@@ -161,3 +161,4 @@ cython_debug/
 
 *.pcap
 *.pcapng
+thread_race_cond.py
