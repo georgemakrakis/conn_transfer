@@ -115,7 +115,8 @@ class LoadBalancer(object):
                 # new connection
                 if sock == self.cs_socket:
                     print('='*40+'flow start'+'='*39)
-                    thread = threading.Thread(target=self.on_accept())
+                    client_socket, client_addr = self.cs_socket.accept()
+                    thread = threading.Thread(target=self.on_accept, args=(client_socket, client_addr))
                     # TODO: Change the name to connection_threads
                     # self.clients_threads[sock] = thread
                     thread.start()
@@ -129,9 +130,8 @@ class LoadBalancer(object):
                         # a "Connection reset by peer" exception will be thrown
                         data = sock.recv(4096) # buffer size: 2^n
                         if data:
-                            print("BBBBB clients_threads")
-                            print(self.clients_threads)
                             thread_id = self.clients_threads[sock]
+                            print(f"==== {thread_id}")
                             if not any(th.ident == thread_id for th in threading.enumerate()):
                                 thread = threading.Thread(target=self.on_recv, args=(sock, data))
                                 
@@ -161,10 +161,12 @@ class LoadBalancer(object):
                         sock.on_close(sock)
                         break
 
-    def on_accept(self):
-        client_socket, client_addr = self.cs_socket.accept()
+    def on_accept(self, client_socket, client_addr):
+        # client_socket, client_addr = self.cs_socket.accept()
 
         self.clients_threads[client_socket] = threading.get_ident()
+        # print("BBBBB clients_threads")
+        # print(self.clients_threads)
 
         print('client connected: %s <==> %s' % (client_addr, self.cs_socket.getsockname()))
 
