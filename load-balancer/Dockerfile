@@ -27,6 +27,7 @@ RUN rm /etc/nginx/sites-enabled/default
 RUN service nginx restart
 
 COPY load-balancer/python_load_balancer.py /root/python_load_balancer.py
+COPY load-balancer/python_load_balancer_threading.py /root/python_load_balancer_threading.py
 
 WORKDIR /root
 

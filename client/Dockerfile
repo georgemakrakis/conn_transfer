@@ -23,5 +23,6 @@ RUN pip3 install flask
 WORKDIR /root
 COPY client/client1.py /root/client1.py
 COPY client/slowloris/slowloris.py /root/slowloris.py
+COPY client/client1_threading.py /root/client1_threading.py
 
 # EXPOSE 8080
