@@ -409,6 +409,11 @@ class LoadBalancer(object):
         if sock.getpeername()[0] not in IPs:
             del self.clients_threads[sock]
 
+            socket_id = {sock_id for sock_id in self.client_sockets_track if self.client_sockets_track[sock_id] == sock}
+            if socket_id != set():
+                # print(socket_id)
+                del self.client_sockets_track[next(iter(socket_id))]
+
         ss_socket = self.flow_table[sock]
 
         self.sockets.remove(sock)
