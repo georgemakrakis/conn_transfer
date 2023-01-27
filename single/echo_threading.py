@@ -1,14 +1,17 @@
-import socket, array, time, os
+import socket, array, time, os, logging
 import subprocess, fcntl, select
 import threading
 
-HOST = "172.20.0.4"
+HOST = "172.20.0.3"
 PORT = 80
 
 TCP_REPAIR          = 19
 TCP_REPAIR_QUEUE    = 20
 
 migration_counter = 0
+
+logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.INFO)
 
 class ThreadedServer(object):
     def __init__(self, host, port):
@@ -34,7 +37,7 @@ class ThreadedServer(object):
 
     def listen(self):
         self.sock.listen(100)
-        print("Listening on port %s ..." % PORT)
+        logging.info("Listening on port %s ..." % PORT)
 
         while True:
             conn, addr = self.sock.accept()
@@ -45,13 +48,13 @@ class ThreadedServer(object):
         global migration_counter
 
         while True:
-            print(f"Connected by {addr}")
+            logging.info(f"Connected by {addr}")
             if addr[0] == "172.20.0.2":
-                print("waiting to recv")
+                logging.info("waiting to recv")
 
                 data = conn.recv(1024)
                 if not data:
-                    print("NO DATA RECV")
+                    logging.warning("NO DATA RECV")
                     break
 
                 # if addr[1] == (50630 + migration_counter):
@@ -61,33 +64,33 @@ class ThreadedServer(object):
 
                         conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
                         
-                        print("Restoring...")
+                        logging.debug("Restoring...")
 
                         inq = None
                         with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
                             inq = inq_file.read()
                         
                         if inq == None:
-                            print("INQ NONE")
+                            logging.debug("INQ NONE")
 
                         if inq == b'':
-                            print("INQ empty, correcting...")
+                            logging.warning("INQ empty, correcting...")
                             inq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
 
-                        print(inq)
+                        logging.debug(inq)
 
                         outq = None
                         with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
                             outq = outq_file.read()
 
                         if outq == None:
-                            print("OUTQ NONE")
+                            logging.debug("OUTQ NONE")
 
                         if outq == b'':
-                            print("OUTQ empty, correcting...")
+                            logging.warning("OUTQ empty, correcting...")
                             outq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
 
-                        print(outq)
+                        logging.debug(outq)
 
                         # print(f"New SEQ num: {conn.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)}")
 
@@ -107,7 +110,7 @@ class ThreadedServer(object):
 
                     except Exception as ex:
                         # print("Could not use TCP_REPAIR mode")
-                        print(f"Issue with Socket Restoration {ex}")
+                        logging.error(f"Issue with Socket Restoration {ex}")
 
                 # TODO: These checks for the condition should be something different in the future
                 # can be something that comes from and IPC. 
@@ -122,7 +125,7 @@ class ThreadedServer(object):
                     self.send_fds(client_unix, b"AAAAA", [conn.fileno()])
                     
                     # self.lock.release()
-                    print("Sent FD")
+                    logging.debug("Sent FD")
 
 
 
@@ -134,7 +137,7 @@ class ThreadedServer(object):
                     #            "root@172.20.0.4:/root/single"]                    
 
                     #subprocess.call(cmd_list)
-                    print("Copied dumped files...")
+                    logging.info("Copied dumped files...")
                     # print(f"FD No after: {conn.fileno()}")
 
                     # TODO: maybe need to wait here for a bit?
@@ -142,13 +145,16 @@ class ThreadedServer(object):
                     # mig_data = "migrated"
                     # os.write(client.fileno(), mig_data.encode())
                 
-                print(f"WILL SEND: {data}")
+                logging.debug(f"WILL SEND: {data}")
                 try:
                     # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
                     conn.sendall(data)
 
                 except OSError as ex:
-                    print(f"Exception {ex} with {str(ex)}")
+                    logging.error(f"Exception {ex} with {str(ex)}")
+
+                    logging.warning("Trying one more time")
+                    conn.sendall(data)
                 # conn.sendall(f"{data.decode()}_{migration_counter}".encode())
             
             else:
