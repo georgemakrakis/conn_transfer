@@ -21,10 +21,6 @@ SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 # TODO: See if we can reuse the above array of tuples
 # IPs = ["172.20.0.3", "172.20.0.4"]
 IPs = ["172.20.0.4", "172.20.0.3"]
-# MIGRATION_TIMES = 2
-# migration_counter = 0
-latest_server = ""
-initiated_migration = False
 
 # Should that be a list inside the class?
 # client_socket = None
@@ -32,7 +28,6 @@ initiated_migration = False
 # logging.basicConfig(level=logging.DEBUG)
 logging.basicConfig(level=logging.INFO)
 
-prev_server_socket = None
 
 ITER = cycle(SERVER_POOL)
 def round_robin(iter):
@@ -68,21 +63,6 @@ class LoadBalancer(object):
 
     migration_triggered = False
 
-    # def __init__(self, ip, port, algorithm='random'):
-    #     self.ip = ip
-    #     self.port = port
-    #     self.algorithm = algorithm
-
-    #     # init a client-side socket
-    #     self.cs_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    #     # the SO_REUSEADDR flag tells the kernel to reuse a local socket in TIME_WAIT state,
-    #     # without waiting for its natural timeout to expire.
-    #     self.cs_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    #     self.cs_socket.bind((self.ip, self.port))
-    #     print('init client-side socket: %s' % (self.cs_socket.getsockname(),))
-    #     self.cs_socket.listen(10) # max connections
-    #     self.sockets.append(self.cs_socket)
-
     # def __init__(self, sock, client_socket_local, algorithm='random'):
     def __init__(self, ip, port, algorithm='random'):
         self.ip = ip
@@ -104,8 +84,6 @@ class LoadBalancer(object):
         self.sockets.append(self.cs_socket)
 
         self.lock = threading.Lock()
-
-        self.clients_threads = dict()
         
         # This will be a match of UUIDs and socket objects
         self.client_sockets_track = dict()
@@ -132,12 +110,11 @@ class LoadBalancer(object):
                         data = sock.recv(4096) # buffer size: 2^n
                         if data:
                             if sock.getpeername()[0] not in IPs:
-                                thread_id = self.clients_threads[sock]
-                                logging.debug(f"==HANDLED== {thread_id}")
-                                if not any(th.ident == thread_id for th in threading.enumerate()):
-                                    thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
-                                    thread.start()
-                                    thread.join()
+                                logging.debug("REMOTE")
+                                # We add the UUID only to the clients, this wha we want to track.
+                                thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
+                                thread.start()
+                                thread.join()
                                 # self.on_recv(sock, data)
                             else:
                                 logging.debug("=====IN=======")
@@ -148,18 +125,17 @@ class LoadBalancer(object):
                             # TODO: we might want to add the backend server connections
                             # to the dict() as well
                             if sock.getpeername()[0] not in IPs:
-                                thread_id = self.clients_threads[sock]
-                                if not any(th.ident == thread_id for th in threading.enumerate()):
-                                    thread = threading.Thread(target=self.on_close, args=(sock,))
-                                    # self.clients_threads[sock] = thread
-                                    thread.start()
-                                    thread.join()
-                                    break
-                                    # self.on_close(sock)
-                                    # break
-                                else:
-                                    self.on_close(sock)
-                                    break
+                                thread = threading.Thread(target=self.on_close, args=(sock,))
+                                # self.clients_threads[sock] = thread
+                                thread.start()
+                                thread.join()
+                                break
+                                # self.on_close(sock)
+                                # break
+
+                            else:
+                                self.on_close(sock)
+                                break
                     except ConnectionResetError as ex:
                         logging.error(f"ConnectionResetError {ex}")                        
                         # continue
@@ -175,10 +151,6 @@ class LoadBalancer(object):
 
     def on_accept(self, client_socket, client_addr):
         # client_socket, client_addr = self.cs_socket.accept()
-
-        self.clients_threads[client_socket] = threading.get_ident()
-        logging.debug("BBBBB clients_threads")
-        logging.debug(self.clients_threads)
 
         logging.info('client connected: %s <==> %s' % (client_addr, self.cs_socket.getsockname()))
 
@@ -203,80 +175,41 @@ class LoadBalancer(object):
         self.flow_table[client_socket] = ss_socket
         self.flow_table[ss_socket] = client_socket
 
-        self.__client_socket = client_socket
-        # self.client_socket = threading.local()
-
-        # self.client_socket.value = client_socket
-        # client_socket_glob.value = client_socket
+        # self.__client_socket = client_socket
 
     
     def on_recv(self, sock, data, unique_id):
-
-        # global client_socket_glob
-
         global IPs
-        # global MIGRATION_TIMES
-        # global migration_counter
-        global latest_server
-        global initiated_migration
-        # global client_socket
-        global prev_server_socket
-
         socket_id = None
 
         logging.info('recving packets: %-20s ==> %-20s, data: %s' % (sock.getpeername(), sock.getsockname(), [data]))
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
         # remote_socket = self.flow_table[sock]
-        
-        # print(f"CURRENT THREAD {threading.get_ident()}")
-        # print(threading.current_thread())
-
 
         # Check for clients that we need to migrate/handle connections
         if sock.getpeername()[0] not in IPs:
-            remote_socket = self.flow_table[sock]
-            logging.debug("REMOTE SOCK SET!!!")
-            # self.client_socket = sock
-            # print("CCCC clients_threads")
-            # print(self.clients_threads)
-            # print(f"CURRENT THREAD {threading.get_ident()}")
-            
-            # print(threading.current_thread())
-            # self.clients_threads[threading.current_thread()] = sock
+            remote_socket = self.flow_table[sock]    
 
-            # make a UUID based on the host ID and current time
+            logging.debug("ADDING")     
+
+            # Add the UUID to the dictionary along with the sock
+            # to keep track of migrations
             socket_id = str(unique_id)
-            # print(socket_id)
             self.client_sockets_track[socket_id] = sock
 
             logging.debug(self.client_sockets_track)
-
-
-            # remote_socket = self.clients_threads[threading.get_ident()]
-            # print(f"RRRRRRRRRRRRRRR {remote_socket}")
-
-            # client_socket_glob.value = sock
 
         # NOTE: here we should check whether we migrate based on our algo
         # that will give us a list of client IPs to migrate. For now I leave the hardcoded IP
         if sock.getpeername()[0] == "172.20.0.5":
             data = f"migration:{socket_id}".encode()
             logging.debug(f"migration {self.migration_counter} is initiated...")
-            # self.client_socket = sock
-            # print(f"client sock will be {self.client_socket.getsockname()} --> {self.client_socket.getpeername()}")
             logging.debug(f"client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
             remote_socket.send(data)
-            # prev_server_socket = remote_socket
             logging.debug('2 sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
             return
-
-        # NOTE: Hardcoded for now but this can be scaled later based on number of requests
-        # if sock.getpeername()[0] == "172.20.0.3":
-       
-        # We also need to check the messages/signals here.    
-        # if sock.getpeername()[0] == IPs[migration_counter % len(IPs)]:
         
         if (data.find("migration".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
         # if (data.find("migration".encode()) != -1):
@@ -284,18 +217,10 @@ class LoadBalancer(object):
             logging.debug("Here 1")
 
             socket_id = data.decode().split(":",1)[1]
-
-            # if prev_server_socket:                
-            #     prev_server_socket.close()
-            #     print("Prev sock closed 1")
         
             # migration_counter += 1
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         
-            # NOTE: The following is a stupid way to have pre-agreed port with the other servers.
-            # Not needed so we might remove it completely. Leave for now cause it is good for debugging.
-            # new_sock.bind(('172.20.0.2', 50630 + self.migration_counter))
-            
             new_sock.connect((IPs[((self.migration_counter) % len(IPs))], 80))
             logging.debug(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
 
@@ -307,19 +232,6 @@ class LoadBalancer(object):
             self.migration_sockets.append(new_sock)
 
             self.flow_table[new_sock] = new_sock
-            # self.flow_table[ss_socket] = client_socket        
-
-
-            prev_server_socket = new_sock
-
-            # print(f"1 client sock is {self.client_socket.getsockname()} --> {self.client_socket.getpeername()}")
-
-            # TODO: Need to keep track of these things to close them later on.
-            # self.migration_flow_table[new_sock] = (new_sock_2, client_socket)
-            # self.migration_flow_table[new_sock_2] = (new_sock_2, client_socket)
-
-            # We want to close the socket that send us the data
-            # sock.close()
 
             return
             
@@ -329,15 +241,10 @@ class LoadBalancer(object):
 
             socket_id = data.decode().split(":",1)[1]            
 
-            # if prev_server_socket:                
-            #     prev_server_socket.close()
-            #     print("Prev sock closed 2")
-
             new_sock_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             new_sock_2.connect((IPs[((self.migration_counter) % len(IPs))], 80))
             logging.debug(f'New 2 {new_sock_2.getsockname()} with {new_sock_2.getpeername()}')
 
-            # new_sock_2 = self.migration_flow_table[sock][0]
             data = f"migration:{socket_id}".encode()
             new_sock_2.send(data)
 
@@ -346,33 +253,15 @@ class LoadBalancer(object):
             self.sockets.append(new_sock_2)
             self.migration_sockets.append(new_sock_2)
 
-            # print(f"NEW SOCK {new_sock_2.getsockname()} --> {new_sock_2.getpeername()}")
-            # self.flow_table[new_sock_2] = new_sock_2
-
-            prev_server_socket = new_sock_2
-
-            # print(f"2 client sock is {self.client_socket.getsockname()} --> {self.client_socket.getpeername()}")
-
-            # sock.close()
-
             return
 
         else:
-            # remote_socket = self.migration_flow_table[sock][1] 
-            # prev_server_socket.close()
+
             logging.debug("Here 3")       
-            # print(f"client sock is {self.client_socket.getsockname()} --> {self.client_socket.getpeername()}")
-            # remote_socket = self.client_socket.value
-            # remote_socket = client_socket_glob.value
-            # remote_socket = self.clients_threads[threading.current_thread()]
 
             socket_id = data.decode().split(":",1)[1]
 
             remote_socket = self.client_sockets_track[socket_id]
-
-            # print("Printing all sockets")
-            # for so in self.sockets:
-            #     print(so)
 
             data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}"
             remote_socket.send(data.encode())
@@ -386,21 +275,14 @@ class LoadBalancer(object):
         # data = "migration".encode()
         # remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
         # print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
-        # migration_counter = 0
 
 
     def on_close(self, sock):
         logging.info('client %s has disconnected' % (sock.getpeername(),))
         logging.info('='*41+'flow end'+'='*40)
 
-        # if (sock.getpeername()[0] in IPs):
-        #     self.sockets.remove(sock)
-        #     sock.close()
-        #     return
-
+        # NOTE: Is the first check really needed?
         if sock.getpeername()[0] not in IPs:
-            del self.clients_threads[sock]
-
             socket_id = {sock_id for sock_id in self.client_sockets_track if self.client_sockets_track[sock_id] == sock}
             if socket_id != set():
                 # print(socket_id)
@@ -435,49 +317,3 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         print("Ctrl C - Stopping load_balancer")
         sys.exit(1)
-
-# Create ONE socket.
-# addr = ('172.20.0.2', 80)
-# LB_sock = socket.socket (socket.AF_INET, socket.SOCK_STREAM)
-# LB_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-# LB_sock.bind(addr)
-# LB_sock.listen(10)
-
-# Launch N listener threads.
-# class Thread(threading.Thread):
-#     def __init__(self, i, client_socket):
-#         threading.Thread.__init__(self)
-#         self.i = i
-#         self.daemon = True
-#         self.client_socket = client_socket
-#         # self.start()        
-#     def run(self):
-#     #     httpd = http.server.HTTPServer(addr, Handler, False)
-
-#     #     # Prevent the HTTP server from re-binding every handler.
-#     #     # https://stackoverflow.com/questions/46210672/
-#     #     httpd.socket = sock
-#     #     httpd.server_bind = self.server_close = lambda self: None
-
-#     #     httpd.serve_forever()
-#         # LoadBalancer('172.20.0.2', 80, 'round robin').start()
-#         LoadBalancer(LB_sock, self.client_socket, 'round robin').start()
-
-
-# [Thread(i) for i in range(10)]
-# for i in range(10):
-#     thread = Thread(i, threading.local())
-#     # print(thread)
-#     thread.start()
-
-# client_socket_glob = threading.local()
-# # client_socket_local = threading.local()
-
-# for i in range(5):
-#     # a = LoadBalancer(LB_sock, client_socket_local, 'round robin')
-#     a = LoadBalancer(LB_sock, None, 'round robin')
-#     t = threading.Thread(target=a.start(), daemon=True)
-#     t.start()
-#     # t.join()
-
-# time.sleep(9e9)
