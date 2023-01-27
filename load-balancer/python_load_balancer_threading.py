@@ -25,8 +25,8 @@ IPs = ["172.20.0.4", "172.20.0.3"]
 # Should that be a list inside the class?
 # client_socket = None
 
-# logging.basicConfig(level=logging.DEBUG)
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.INFO)
 
 
 ITER = cycle(SERVER_POOL)
@@ -79,7 +79,7 @@ class LoadBalancer(object):
         self.cs_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.cs_socket.bind((self.ip, self.port))
 
-        logging.info('init client-side socket: %s' % (self.cs_socket.getsockname(),))
+        logging.info(f"init client-side socket: {self.cs_socket.getsockname()}")
         self.cs_socket.listen(10) # max connections
         self.sockets.append(self.cs_socket)
 
@@ -110,7 +110,6 @@ class LoadBalancer(object):
                         data = sock.recv(4096) # buffer size: 2^n
                         if data:
                             if sock.getpeername()[0] not in IPs:
-                                logging.debug("REMOTE")
                                 # We add the UUID only to the clients, this wha we want to track.
                                 thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
                                 thread.start()
@@ -152,7 +151,7 @@ class LoadBalancer(object):
     def on_accept(self, client_socket, client_addr):
         # client_socket, client_addr = self.cs_socket.accept()
 
-        logging.info('client connected: %s <==> %s' % (client_addr, self.cs_socket.getsockname()))
+        logging.info(f"client connected: {client_addr} <==> {self.cs_socket.getsockname()}")
 
         # select a server that forwards packets to
         server_ip, server_port = self.select_server(SERVER_POOL, self.algorithm)
@@ -161,11 +160,11 @@ class LoadBalancer(object):
         ss_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             ss_socket.connect((server_ip, server_port))
-            logging.info('init server-side socket: %s' % (ss_socket.getsockname(),))
-            logging.info('server connected: %s <==> %s' % (ss_socket.getsockname(),(socket.gethostbyname(server_ip), server_port)))
+            logging.info(f"init server-side socket: {ss_socket.getsockname()}")
+            logging.info(f"server connected: {ss_socket.getsockname()} <==> {(socket.gethostbyname(server_ip), server_port)}")
         except:
-            logging.info("Can't establish connection with remote server, err: %s" % sys.exc_info()[0])
-            logging.info("Closing connection with client socket %s" % (client_addr,))
+            logging.info(f"Can't establish connection with remote server, err: {sys.exc_info()[0]}")
+            logging.info(f"Closing connection with client socket {client_addr}")
             client_socket.close()
             return
 
@@ -182,16 +181,14 @@ class LoadBalancer(object):
         global IPs
         socket_id = None
 
-        logging.info('recving packets: %-20s ==> %-20s, data: %s' % (sock.getpeername(), sock.getsockname(), [data]))
+        logging.info(f"recving packets: {sock.getpeername()} ==> {sock.getsockname()}, data: {data}")
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
         # remote_socket = self.flow_table[sock]
 
         # Check for clients that we need to migrate/handle connections
         if sock.getpeername()[0] not in IPs:
-            remote_socket = self.flow_table[sock]    
-
-            logging.debug("ADDING")     
+            remote_socket = self.flow_table[sock]  
 
             # Add the UUID to the dictionary along with the sock
             # to keep track of migrations
@@ -208,7 +205,7 @@ class LoadBalancer(object):
             logging.debug(f"client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
             remote_socket.send(data)
-            logging.debug('2 sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
+            logging.debug(f"2 sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
             return
         
         if (data.find("migration".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
@@ -265,7 +262,7 @@ class LoadBalancer(object):
 
             data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}"
             remote_socket.send(data.encode())
-            logging.info('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
+            logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
 
         if self.migration_counter == self.MIGRATION_TIMES:
             self.migration_counter = 0          
@@ -278,7 +275,7 @@ class LoadBalancer(object):
 
 
     def on_close(self, sock):
-        logging.info('client %s has disconnected' % (sock.getpeername(),))
+        logging.info(f"client {sock.getpeername()} has disconnected")
         logging.info('='*41+'flow end'+'='*40)
 
         # NOTE: Is the first check really needed?
