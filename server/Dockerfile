@@ -26,6 +26,7 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 RUN pip3 install virtualenv
 RUN pip3 install flask
+RUN pip3 install gunicorn
 RUN pip3 install Flask-Limiter
 
 # To dump the whole process
@@ -64,6 +65,10 @@ COPY server/transparency_cmds_server.sh /root/transparency_cmds_server.sh
 # Individual socket migration folder
 RUN mkdir /root/single
 ADD single /root/single
+
+# gunicorn server folder
+RUN mkdir /root/single/simple_server_flask_gunicorn
+ADD server/simple_server_flask_gunicorn /root/single/simple_server_flask_gunicorn
 
 
 EXPOSE 8080

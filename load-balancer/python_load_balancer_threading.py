@@ -60,7 +60,6 @@ class LoadBalancer(object):
     MIGRATION_TIMES = 1
     migration_counter = 0
 
-
     migration_triggered = False
 
     # def __init__(self, sock, client_socket_local, algorithm='random'):
@@ -108,6 +107,7 @@ class LoadBalancer(object):
                         # In Windows, sometimes when a TCP program closes abruptly,
                         # a "Connection reset by peer" exception will be thrown
                         data = sock.recv(4096) # buffer size: 2^n
+                        # data = sock.recv(16) # buffer size: 2^n
                         if data:
                             if sock.getpeername()[0] not in IPs:
                                 # We add the UUID only to the clients, this wha we want to track.
@@ -120,21 +120,21 @@ class LoadBalancer(object):
                                 thread = threading.Thread(target=self.on_recv, args=(sock, data, None))
                                 thread.start()
                                 thread.join()
-                        else:
-                            # TODO: we might want to add the backend server connections
-                            # to the dict() as well
-                            if sock.getpeername()[0] not in IPs:
-                                thread = threading.Thread(target=self.on_close, args=(sock,))
-                                # self.clients_threads[sock] = thread
-                                thread.start()
-                                thread.join()
-                                break
-                                # self.on_close(sock)
-                                # break
+                        # else:
+                        #     # TODO: we might want to add the backend server connections
+                        #     # to the dict() as well
+                        #     if sock.getpeername()[0] not in IPs:
+                        #         thread = threading.Thread(target=self.on_close, args=(sock,))
+                        #         # self.clients_threads[sock] = thread
+                        #         thread.start()
+                        #         thread.join()
+                        #         break
+                        #         # self.on_close(sock)
+                        #         # break
 
-                            else:
-                                self.on_close(sock)
-                                break
+                        #     else:
+                        #         self.on_close(sock)
+                        #         break
                     except ConnectionResetError as ex:
                         logging.error(f"ConnectionResetError {ex}")                        
                         # continue
@@ -168,6 +168,9 @@ class LoadBalancer(object):
             client_socket.close()
             return
 
+        # client_socket.settimeout(0.1)
+        client_socket.setblocking(0)
+
         self.sockets.append(client_socket)
         self.sockets.append(ss_socket)
 
@@ -184,6 +187,7 @@ class LoadBalancer(object):
         logging.info(f"recving packets: {sock.getpeername()} ==> {sock.getsockname()}, data: {data}")
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
+        
         # remote_socket = self.flow_table[sock]
 
         # Check for clients that we need to migrate/handle connections
@@ -199,6 +203,7 @@ class LoadBalancer(object):
 
         # NOTE: here we should check whether we migrate based on our algo
         # that will give us a list of client IPs to migrate. For now I leave the hardcoded IP
+        # This shoulde be a signal from the "agent" that lives in the backend server.
         if sock.getpeername()[0] == "172.20.0.5":
             data = f"migration:{socket_id}".encode()
             logging.debug(f"migration {self.migration_counter} is initiated...")
@@ -215,10 +220,12 @@ class LoadBalancer(object):
 
             socket_id = data.decode().split(":",1)[1]
         
-            # migration_counter += 1
+            # self.migration_counter += 1
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
-            new_sock.connect((IPs[((self.migration_counter) % len(IPs))], 80))
+
+            # NOTE: Use the existing round robin to move to the next server that we want to migrate to
+            new_sock.connect(round_robin(ITER))
+
             logging.debug(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
 
             # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
@@ -239,10 +246,19 @@ class LoadBalancer(object):
             socket_id = data.decode().split(":",1)[1]            
 
             new_sock_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            new_sock_2.connect((IPs[((self.migration_counter) % len(IPs))], 80))
+            
+            new_sock_2.connect((sock.getpeername()[0], 80))
+
             logging.debug(f'New 2 {new_sock_2.getsockname()} with {new_sock_2.getpeername()}')
 
-            data = f"migration:{socket_id}".encode()
+            # NOTE: Correct data will be "migration" but "Ended" is for testing with 2 servers
+            # and 1 migration.
+            # NOTE: But if we send migration again, another socket dump will happen.
+            # TODO: Need to find a way that both N migrations can happen but also send correct
+            # messages and do not stuck in a loop (more checks and send outside the if statments?)
+
+            # data = f"migration:{socket_id}".encode()
+            data = f"Ended:{socket_id}".encode()
             new_sock_2.send(data)
 
             self.migration_counter += 1
@@ -265,13 +281,17 @@ class LoadBalancer(object):
             logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
 
         if self.migration_counter == self.MIGRATION_TIMES:
-            self.migration_counter = 0          
+            self.migration_counter = 0
+            # Once we have finished all the migrations go to the next server to 
+            # forward traffic to.
+            round_robin(ITER)
 
             
         # remote_socket.send(data)
         # data = "migration".encode()
+
         # remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
-        # print('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
+        # logging.info('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
 
 
     def on_close(self, sock):

@@ -50,5 +50,6 @@ def http_get_with_requests_parallel(list_of_urls, threads):
 
 if __name__ == '__main__':
 
-    http_get_with_requests_parallel(['http://172.20.0.2:80'], 2)
+    # http_get_with_requests_parallel(['http://172.20.0.2:80'], 2)
+    http_get_with_requests_parallel(['http://172.20.0.2:80'], 6)
     #print(results)
