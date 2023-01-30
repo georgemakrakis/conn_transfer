@@ -184,6 +184,9 @@ class LoadBalancer(object):
         global IPs
         socket_id = None
 
+        new_sock = None
+        mig_data = None
+
         logging.info(f"recving packets: {sock.getpeername()} ==> {sock.getsockname()}, data: {data}")
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
@@ -205,11 +208,11 @@ class LoadBalancer(object):
         # that will give us a list of client IPs to migrate. For now I leave the hardcoded IP
         # This shoulde be a signal from the "agent" that lives in the backend server.
         if sock.getpeername()[0] == "172.20.0.5":
-            data = f"migration:{socket_id}".encode()
+            mig_data = f"migration:{socket_id}".encode()
             logging.debug(f"migration {self.migration_counter} is initiated...")
             logging.debug(f"client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
-            remote_socket.send(data)
+            remote_socket.send(mig_data)
             logging.debug(f"2 sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
             return
         
@@ -228,47 +231,34 @@ class LoadBalancer(object):
 
             logging.debug(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
 
-            # NOTE: This is a naive way to send a second signal to the entitry that will retrieve
-            # the migration data (can be anything)
-            new_sock.send(f"mig_signal_2:{socket_id}".encode())
+            # NOTE: This is a naive way to send a second signal to the entity that will retrieve
+            # the migration data (can be anything, just make two distinct operations, dump/restore)
+            mig_data = f"mig_signal_2:{socket_id}".encode()
             
-            self.sockets.append(new_sock)
-            self.migration_sockets.append(new_sock)
-
-            self.flow_table[new_sock] = new_sock
-
-            return
-            
-        elif (data.find("mig_signal_2".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
+        if (data.find("mig_signal_2".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
         # elif (data.find("mig_signal_2".encode()) != -1):
             logging.debug("Here 2")
 
+            self.migration_counter += 1
+
             socket_id = data.decode().split(":",1)[1]            
 
-            new_sock_2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             
-            new_sock_2.connect((sock.getpeername()[0], 80))
+            new_sock.connect((sock.getpeername()[0], 80))
 
-            logging.debug(f'New 2 {new_sock_2.getsockname()} with {new_sock_2.getpeername()}')
+            logging.debug(f'New 2 {new_sock.getsockname()} with {new_sock.getpeername()}')
 
             # NOTE: Correct data will be "migration" but "Ended" is for testing with 2 servers
             # and 1 migration.
             # NOTE: But if we send migration again, another socket dump will happen.
             # TODO: Need to find a way that both N migrations can happen but also send correct
             # messages and do not stuck in a loop (more checks and send outside the if statments?)
+            
+            mig_data = f"migration:{socket_id}".encode()
 
-            # data = f"migration:{socket_id}".encode()
-            data = f"Ended:{socket_id}".encode()
-            new_sock_2.send(data)
-
-            self.migration_counter += 1
-
-            self.sockets.append(new_sock_2)
-            self.migration_sockets.append(new_sock_2)
-
-            return
-
-        else:
+        if self.migration_counter == self.MIGRATION_TIMES:
+            self.migration_counter = 0
 
             logging.debug("Here 3")       
 
@@ -280,11 +270,19 @@ class LoadBalancer(object):
             remote_socket.send(data.encode())
             logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
 
-        if self.migration_counter == self.MIGRATION_TIMES:
-            self.migration_counter = 0
             # Once we have finished all the migrations go to the next server to 
             # forward traffic to.
             round_robin(ITER)
+            return
+
+        else:
+            new_sock.send(mig_data)
+            
+            self.sockets.append(new_sock)
+            self.migration_sockets.append(new_sock)
+
+            self.flow_table[new_sock] = new_sock
+            return
 
             
         # remote_socket.send(data)
