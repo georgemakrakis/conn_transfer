@@ -42,7 +42,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 data = conn.recv(1024)
                 if not data:
                     print("NO DATA RECV")
-                    break
+                    # break
+                    continue
 
                 # if addr[1] == (50630 + migration_counter):
                 if (data.find("mig_signal_2".encode()) != -1):

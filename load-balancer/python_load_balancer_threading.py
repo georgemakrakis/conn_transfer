@@ -12,7 +12,9 @@ import struct, array, time
 # dumb netcat server, short tcp connection
 # $ ~  while true ; do nc -l 8888 < server1.html; done
 # $ ~  while true ; do nc -l 9999 < server2.html; done
-SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
+# SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
+SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80), ('172.20.0.7', 80)]
+MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.7',80), ('172.20.0.3', 80)]
 
 # dumb python socket echo server, long tcp connection
 # $ ~  while  python server.py
@@ -20,7 +22,9 @@ SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 
 # TODO: See if we can reuse the above array of tuples
 # IPs = ["172.20.0.3", "172.20.0.4"]
-IPs = ["172.20.0.4", "172.20.0.3"]
+
+# IPs = ["172.20.0.4", "172.20.0.3"]
+IPs = ["172.20.0.4", "172.20.0.3", "172.20.0.7"]
 
 # Should that be a list inside the class?
 # client_socket = None
@@ -30,6 +34,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 ITER = cycle(SERVER_POOL)
+MIG_ITER = cycle(MIG_SERVER_POOL) # This one is slided one step to the right as above
 def round_robin(iter):
     # round_robin([A, B, C, D]) --> A B C D A B C D A B C D ...
     return next(iter)
@@ -226,8 +231,8 @@ class LoadBalancer(object):
             # self.migration_counter += 1
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-            # NOTE: Use the existing round robin to move to the next server that we want to migrate to
-            new_sock.connect(round_robin(ITER))
+            # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
+            new_sock.connect(round_robin(MIG_ITER))
 
             logging.debug(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
 
@@ -270,9 +275,6 @@ class LoadBalancer(object):
             remote_socket.send(data.encode())
             logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
 
-            # Once we have finished all the migrations go to the next server to 
-            # forward traffic to.
-            round_robin(ITER)
             return
 
         else:

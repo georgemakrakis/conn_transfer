@@ -55,7 +55,8 @@ class ThreadedServer(object):
                 data = conn.recv(1024)
                 if not data:
                     logging.warning("NO DATA RECV")
-                    break
+                    # break
+                    continue
 
                 # if addr[1] == (50630 + migration_counter):
                 if (data.find("mig_signal_2".encode()) != -1):
