@@ -2,6 +2,8 @@ import socket, array, time, os, logging
 import subprocess, fcntl, select
 import threading
 
+import concurrent.futures
+
 HOST = "172.20.0.3"
 PORT = 80
 
@@ -14,12 +16,17 @@ logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
 class ThreadedServer(object):
-    def __init__(self, host, port):
+    def __init__(self, host, port, threads):
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.host, self.port))
+
+        # Say we can handle N-threads plus the main thread
+        self.threads = threads + 1
+
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
 
         self.lock = threading.Lock()
 
@@ -40,23 +47,53 @@ class ThreadedServer(object):
         logging.info("Listening on port %s ..." % PORT)
 
         while True:
+            logging.debug(f"Active Thread Count: {threading.active_count()}")
+            # logging.debug(f"Active Thread Count 1: {self.executor._work_queue.qsize()}")
             conn, addr = self.sock.accept()
-            conn.settimeout(60)
-            threading.Thread(target = self.listenToClient,args = (conn,addr)).start()
+            conn.settimeout(100)
+
+            # TODO: Should if not accepting more be putting the tasks in a queue and execute them later?
+            if threading.active_count() <= self.threads:
+                new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr))
+                new_thread.start()
+            # else: # Now we send the migration condition signal
+            #     if data:
+
+
+            # self.executor.submit(self.listenToClient, conn, addr)
 
     def listenToClient(self, conn, addr):
         global migration_counter
 
         while True:
+            # logging.debug(f"Active Thread Count 2: {self.executor._work_queue.qsize()}")
             logging.info(f"Connected by {addr}")
             if addr[0] == "172.20.0.2":
                 logging.info("waiting to recv")
 
-                data = conn.recv(1024)
-                if not data:
-                    logging.warning("NO DATA RECV")
-                    # break
-                    continue
+                # data = conn.recv(1024)
+                # if not data:
+                #     logging.warning("NO DATA RECV")
+                #     # break
+                #     continue
+
+                data = bytes()
+                continue_recv = True
+
+                while continue_recv:
+                    try:
+                        # Try to receive some data
+                        data_recv = conn.recv(16)
+                        data += data_recv
+                        logging.debug(f"Data so far.. {data} with len {len(data)}")
+                        if not data_recv:
+                            logging.warning("NO DATA RECV")
+                            continue_recv = False
+                        if data.find(b"\r\n\r\n") != -1 :
+                            continue_recv = False                        
+                    except Exception as ex:
+                        logging.error(f"Exception {ex}")
+                        continue_recv = False
 
                 # if addr[1] == (50630 + migration_counter):
                 if (data.find("mig_signal_2".encode()) != -1):
@@ -128,7 +165,7 @@ class ThreadedServer(object):
                     # self.lock.release()
                     logging.debug("Sent FD")
 
-
+                    # logging.debug(f"Active Thread Count 3: {self.executor._work_queue.qsize()}")
 
                     # NOTE: here also we need to have dynamically the server that the files
                     # will be sent to.
@@ -150,19 +187,23 @@ class ThreadedServer(object):
                 try:
                     # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
                     conn.sendall(data)
+                    return
 
                 except OSError as ex:
                     logging.error(f"Exception {ex} with {str(ex)}")
 
                     logging.warning("Trying one more time")
                     conn.sendall(data)
+                    return
                 # conn.sendall(f"{data.decode()}_{migration_counter}".encode())
             
             else:
                 conn.close()
+                return
 
 def main():
-    ThreadedServer(HOST,PORT).listen()
+    threads = 20
+    ThreadedServer(HOST,PORT, threads).listen()
 
 
 if __name__ == "__main__":
