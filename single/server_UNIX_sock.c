@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <uuid/uuid.h>
 
 #include "./soccr/soccr.h"
 
@@ -23,6 +24,36 @@ static void pr_printf(unsigned int level, const char *fmt, ...)
 	va_start(args, fmt);
 	vprintf(fmt, args);
 	va_end(args);
+}
+
+// Adpopted from: https://stackoverflow.com/a/51068240
+char *produce_uuid()
+{
+	uuid_t binuuid;
+    /*
+     * Generate a UUID. We're not done yet, though,
+     * for the UUID generated is in binary format 
+     * (hence the variable name). We must 'unparse' 
+     * binuuid to get a usable 36-character string.
+     */
+
+    // uuid_generate_random(binuuid);
+
+    uuid_generate(binuuid);
+
+    /*
+     * uuid_unparse() doesn't allocate memory for itself, so do that with
+     * malloc(). 37 is the length of a UUID (36 characters), plus '\0'.
+     */
+    char *uuid = malloc(37);
+
+    /*
+     * Produces a UUID string at uuid consisting of letters
+     * whose case depends on the system's locale.
+     */
+    uuid_unparse(binuuid, uuid);
+
+    return uuid;
 }
 
 // Adopted From: https://stackoverflow.com/a/2358843/7189378
@@ -94,6 +125,19 @@ int * recv_fd(int socket, int n) {
         //fds = *((int *) CMSG_DATA(cmsg));
 
         return fds;
+}
+
+char *concat_file_name(char *new_uuid, char *path, char *file_name)
+{
+	size_t n = strlen(new_uuid) + strlen(path) + strlen(file_name) + 1 + 1;
+	char *final_file_name = malloc(n);
+
+	strcpy(final_file_name, path);			
+	strcat(final_file_name, new_uuid);
+	strcat(final_file_name, "_");
+	strcat(final_file_name, file_name);
+
+	return final_file_name;
 }
 
 int main(int argc, char *argv[])
@@ -179,10 +223,20 @@ int main(int argc, char *argv[])
 				perror("libsoccr_save");
 				return -1;
 			}
+
+			char *new_uuid = produce_uuid();
+			//printf("NEW UUID PRODUCED %s\n", new_uuid);
+
 			// TODO: save all the above to a file and read from it to restore the socket
 			FILE *file;
-     
-			file = fopen ("/migvolume1/dump.dat", "w");
+
+			char *path = "/migvolume1/";
+			char *file_name = "dump.dat";
+
+			char *final_file_name = concat_file_name(new_uuid, path, file_name);
+			printf("FINAL FILE NAME %s\n", final_file_name);
+
+			file = fopen (final_file_name, "w");
 			if (file == NULL)
 			{
 				fprintf(stderr, "Error opening file\n");

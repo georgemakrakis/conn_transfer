@@ -1,6 +1,7 @@
 import socket, array, time, os, logging
 import subprocess, fcntl, select
 import threading
+import uuid
 
 import concurrent.futures
 
@@ -30,6 +31,10 @@ class ThreadedServer(object):
 
         self.lock = threading.Lock()
 
+        self.fds_uuids = dict()
+
+        self.migration_signal_sent = False
+
     def recv_fds(self, sock, msglen, maxfds):
         fds = array.array("i")   # Array of ints
         msg, ancdata, flags, addr = sock.recvmsg(msglen, socket.CMSG_LEN(maxfds * fds.itemsize))
@@ -47,22 +52,72 @@ class ThreadedServer(object):
         logging.info("Listening on port %s ..." % PORT)
 
         while True:
-            logging.debug(f"Active Thread Count: {threading.active_count()}")
-            # logging.debug(f"Active Thread Count 1: {self.executor._work_queue.qsize()}")
+            logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}")
+            # logging.debug(f"{threading.current_thread().name}  Active Thread Count 1: {self.executor._work_queue.qsize()}")
             conn, addr = self.sock.accept()
             conn.settimeout(100)
+
+            if self.migration_signal_sent:
+                # NOTE: could that be with thread?
+                # new_thread = threading.Thread(target = self.listenToClient_mig, args = (conn,addr))
+                # new_thread.start()
+
+                logging.debug(f"{threading.current_thread().name} {self.fds_uuids}")
+
+                self.listenToClient_mig(conn, addr)
+
+                continue
 
             # TODO: Should if not accepting more be putting the tasks in a queue and execute them later?
             if threading.active_count() <= self.threads:
                 new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr))
                 new_thread.start()
-            # else: # Now we send the migration condition signal
-            #     if data:
+            else: # Now we send the migration condition signal
+                logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
+                migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                migration_signal_sock.connect(("172.20.0.2", 80))
+                migration_signal_sock.send("threads_full".encode())
+
+                migration_signal_sock.close()
+                self.migration_signal_sent = True
+                continue
+                # break
 
 
             # self.executor.submit(self.listenToClient, conn, addr)
 
     def listenToClient(self, conn, addr):
+        logging.info("waiting to recv")
+
+        self.fds_uuids[str(uuid.uuid4())] = conn.fileno()
+
+        data = bytes()
+        continue_recv = True
+
+        while continue_recv:
+            try:
+                # Try to receive some data
+                data_recv = conn.recv(16)
+                data += data_recv
+                # logging.debug(f"{threading.current_thread().name}  Data so far.. {data} with len {len(data)}")
+                if not data_recv:
+                    logging.warning("NO DATA RECV")
+                    continue_recv = False
+                if data.find(b"\r\n\r\n") != -1 :
+                    continue_recv = False                        
+            except Exception as ex:
+                logging.error(f"Exception {ex}")
+                continue_recv = False
+                        
+        logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
+        try:
+            conn.sendall(data)
+            return
+        except OSError as ex:
+            logging.error(f"Exception {ex} with {str(ex)}")
+            return
+
+    def listenToClient_mig(self, conn, addr):
         global migration_counter
 
         while True:
@@ -85,7 +140,7 @@ class ThreadedServer(object):
                         # Try to receive some data
                         data_recv = conn.recv(16)
                         data += data_recv
-                        logging.debug(f"Data so far.. {data} with len {len(data)}")
+                        logging.debug(f"{threading.current_thread().name} Data so far.. {data} with len {len(data)}")
                         if not data_recv:
                             logging.warning("NO DATA RECV")
                             continue_recv = False
@@ -161,11 +216,13 @@ class ThreadedServer(object):
                     # self.lock.acquire()
 
                     self.send_fds(client_unix, b"AAAAA", [conn.fileno()])
+
+                    # HERE we should dump all the sockets in a loop
                     
                     # self.lock.release()
                     logging.debug("Sent FD")
 
-                    # logging.debug(f"Active Thread Count 3: {self.executor._work_queue.qsize()}")
+                    # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
 
                     # NOTE: here also we need to have dynamically the server that the files
                     # will be sent to.
@@ -183,7 +240,7 @@ class ThreadedServer(object):
                     # mig_data = "migrated"
                     # os.write(client.fileno(), mig_data.encode())
                 
-                logging.debug(f"WILL SEND: {data}")
+                logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
                 try:
                     # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
                     conn.sendall(data)
@@ -202,7 +259,7 @@ class ThreadedServer(object):
                 return
 
 def main():
-    threads = 20
+    threads = 4
     ThreadedServer(HOST,PORT, threads).listen()
 
 

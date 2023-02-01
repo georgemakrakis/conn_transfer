@@ -12,9 +12,12 @@ import struct, array, time
 # dumb netcat server, short tcp connection
 # $ ~  while true ; do nc -l 8888 < server1.html; done
 # $ ~  while true ; do nc -l 9999 < server2.html; done
+SERVER_POOL = [('172.20.0.3', 80)]
 # SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
-SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80), ('172.20.0.7', 80)]
-MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.7',80), ('172.20.0.3', 80)]
+# SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80), ('172.20.0.7', 80)]
+
+MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.3', 80)]
+# MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.7',80), ('172.20.0.3', 80)]
 
 # dumb python socket echo server, long tcp connection
 # $ ~  while  python server.py
@@ -157,6 +160,7 @@ class LoadBalancer(object):
         # client_socket, client_addr = self.cs_socket.accept()
 
         logging.info(f"client connected: {client_addr} <==> {self.cs_socket.getsockname()}")
+        # logging.debug(f"{threading.current_thread().name}Active Thread Count: {threading.active_count()}")
 
         # select a server that forwards packets to
         server_ip, server_port = self.select_server(SERVER_POOL, self.algorithm)
@@ -196,7 +200,7 @@ class LoadBalancer(object):
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
         
-        # remote_socket = self.flow_table[sock]
+        remote_socket = self.flow_table[sock]
 
         # Check for clients that we need to migrate/handle connections
         if sock.getpeername()[0] not in IPs:
@@ -207,91 +211,95 @@ class LoadBalancer(object):
             socket_id = str(unique_id)
             self.client_sockets_track[socket_id] = sock
 
-            logging.debug(self.client_sockets_track)
+            logging.debug(f"{threading.current_thread().name} {self.client_sockets_track}")
 
         # NOTE: here we should check whether we migrate based on our algo
         # that will give us a list of client IPs to migrate. For now I leave the hardcoded IP
         # This shoulde be a signal from the "agent" that lives in the backend server.
-        if sock.getpeername()[0] == "172.20.0.5":
-            mig_data = f"migration:{socket_id}".encode()
-            logging.debug(f"migration {self.migration_counter} is initiated...")
-            logging.debug(f"client sock will be {sock.getsockname()} --> {sock.getpeername()}")
+        
+        # if sock.getpeername()[0] == "172.20.0.5":
+        if (data.find("threads_full".encode()) != -1):
+            mig_data = f"migration:{socket_id}:\r\n\r\n".encode()
+            logging.debug(f"{threading.current_thread().name} migration {self.migration_counter} is initiated...")
+            logging.debug(f"{threading.current_thread().name} client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
             remote_socket.send(mig_data)
-            logging.debug(f"2 sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
+            # remote_socket.send("threads_full".encode())
+            logging.debug(f"{threading.current_thread().name} 2 sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
             return
         
-        if (data.find("migration".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
-        # if (data.find("migration".encode()) != -1):
+        # if (data.find("migration".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
+        # # if (data.find("migration".encode()) != -1):
             
-            logging.debug("Here 1")
+        #     logging.debug(f"{threading.current_thread().name} Here 1")
 
-            socket_id = data.decode().split(":",1)[1]
+        #     socket_id = data.decode().split(":",2)[1]
         
-            # self.migration_counter += 1
-            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #     # self.migration_counter += 1
+        #     new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-            # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
-            new_sock.connect(round_robin(MIG_ITER))
+        #     # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
+        #     new_sock.connect(round_robin(MIG_ITER))
 
-            logging.debug(f'New {new_sock.getsockname()} with {new_sock.getpeername()}')
+        #     logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
 
-            # NOTE: This is a naive way to send a second signal to the entity that will retrieve
-            # the migration data (can be anything, just make two distinct operations, dump/restore)
-            mig_data = f"mig_signal_2:{socket_id}".encode()
+        #     # NOTE: This is a naive way to send a second signal to the entity that will retrieve
+        #     # the migration data (can be anything, just make two distinct operations, dump/restore)
+        #     mig_data = f"mig_signal_2:{socket_id}:\r\n\r\n".encode()
             
-        if (data.find("mig_signal_2".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
-        # elif (data.find("mig_signal_2".encode()) != -1):
-            logging.debug("Here 2")
+        # if (data.find("mig_signal_2".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
+        # # elif (data.find("mig_signal_2".encode()) != -1):
+        #     logging.debug(f"{threading.current_thread().name} Here 2")
 
-            self.migration_counter += 1
+        #     self.migration_counter += 1
 
-            socket_id = data.decode().split(":",1)[1]            
+        #     socket_id = data.decode().split(":",2)[1]            
 
-            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #     new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             
-            new_sock.connect((sock.getpeername()[0], 80))
+        #     new_sock.connect((sock.getpeername()[0], 80))
 
-            logging.debug(f'New 2 {new_sock.getsockname()} with {new_sock.getpeername()}')
+        #     logging.debug(f"{threading.current_thread().name} New 2 {new_sock.getsockname()} with {new_sock.getpeername()}")
 
-            # NOTE: Correct data will be "migration" but "Ended" is for testing with 2 servers
-            # and 1 migration.
-            # NOTE: But if we send migration again, another socket dump will happen.
-            # TODO: Need to find a way that both N migrations can happen but also send correct
-            # messages and do not stuck in a loop (more checks and send outside the if statments?)
+        #     # NOTE: Correct data will be "migration" but "Ended" is for testing with 2 servers
+        #     # and 1 migration.
+        #     # NOTE: But if we send migration again, another socket dump will happen.
+        #     # TODO: Need to find a way that both N migrations can happen but also send correct
+        #     # messages and do not stuck in a loop (more checks and send outside the if statments?)
             
-            mig_data = f"migration:{socket_id}".encode()
+        #     mig_data = f"migration:{socket_id}:\r\n\r\n".encode()
 
-        if self.migration_counter == self.MIGRATION_TIMES:
-            self.migration_counter = 0
+        # if self.migration_counter == self.MIGRATION_TIMES:
+        #     self.migration_counter = 0
 
-            logging.debug("Here 3")       
+        #     logging.debug(f"{threading.current_thread().name} Here 3")       
 
-            socket_id = data.decode().split(":",1)[1]
+        #     socket_id = data.decode().split(":",2)[1]
 
-            remote_socket = self.client_sockets_track[socket_id]
+        #     remote_socket = self.client_sockets_track[socket_id]
 
-            data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}"
-            remote_socket.send(data.encode())
-            logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
-
-            return
-
-        else:
-            new_sock.send(mig_data)
+        #     data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}"
+        #     remote_socket.send(data.encode())
+        #     logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
             
-            self.sockets.append(new_sock)
-            self.migration_sockets.append(new_sock)
+        #     return
 
-            self.flow_table[new_sock] = new_sock
-            return
+        # else:
+        #     new_sock.send(mig_data)
+            
+        #     self.sockets.append(new_sock)
+        #     self.migration_sockets.append(new_sock)
+
+        #     self.flow_table[new_sock] = new_sock
+        #     return
 
             
         # remote_socket.send(data)
         # data = "migration".encode()
 
-        # remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
-        # logging.info('sending packets: %-20s ==> %-20s, data: %s' % (remote_socket.getsockname(), remote_socket.getpeername(), [data]))
+        remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
+        logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
+        return
 
 
     def on_close(self, sock):
