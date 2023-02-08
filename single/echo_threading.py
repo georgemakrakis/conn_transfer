@@ -31,7 +31,8 @@ class ThreadedServer(object):
 
         self.lock = threading.Lock()
 
-        self.fds_uuids = dict()
+        self.fds = threading.local()        
+        self.last_fd = None
 
         self.migration_signal_sent = False
 
@@ -50,6 +51,8 @@ class ThreadedServer(object):
     def listen(self):
         self.sock.listen(100)
         logging.info("Listening on port %s ..." % PORT)
+        
+        self.fds.value = []
 
         while True:
             logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}")
@@ -57,22 +60,35 @@ class ThreadedServer(object):
             conn, addr = self.sock.accept()
             conn.settimeout(100)
 
-            if self.migration_signal_sent:
+            # TODO each one of these ports should be read from a config file along with the LB IP and current server IP.
+            if (self.migration_signal_sent) and (conn.getpeername()[1] == 4000):
+            # if self.migration_signal_sent:
                 # NOTE: could that be with thread?
                 # new_thread = threading.Thread(target = self.listenToClient_mig, args = (conn,addr))
                 # new_thread.start()
 
-                logging.debug(f"{threading.current_thread().name} {self.fds_uuids}")
+                logging.debug(f"{threading.current_thread().name} ++++++++++ {self.fds.value}")
 
-                self.listenToClient_mig(conn, addr)
+                self.listenToClient_mig(conn, addr, self.fds.value)
+
+
+                # TODO: Here we should release the migration_signal_sent
+                # self.migration_signal_sent = False
 
                 continue
 
             # TODO: Should if not accepting more be putting the tasks in a queue and execute them later?
             if threading.active_count() <= self.threads:
-                new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr))
+                new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value))
                 new_thread.start()
-            else: # Now we send the migration condition signal
+            elif (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
+
+                # TODO: Do we need to pause all the other threads from execution? 
+                # Most probably we can't, see: https://stackoverflow.com/a/13399592/7189378
+                # We can attempt to make this hack with signals and flags but we might have 
+                # a sleep and performance issue that we want to measure.
+                # https://alibaba-cloud.medium.com/detailed-explanation-and-examples-of-the-suspension-recovery-and-exit-of-python-threads-d4c077509461 
+
                 logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
                 migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 migration_signal_sock.connect(("172.20.0.2", 80))
@@ -86,10 +102,18 @@ class ThreadedServer(object):
 
             # self.executor.submit(self.listenToClient, conn, addr)
 
-    def listenToClient(self, conn, addr):
+    def listenToClient(self, conn, addr, fds):
         logging.info("waiting to recv")
 
-        self.fds_uuids[str(uuid.uuid4())] = conn.fileno()
+        # We remove the duplicate FDs. We do not need "while" instead of "if" here 
+        # since FDs cannot be reused per https://man7.org/linux/man-pages/man2/close.2.html
+        # if conn.fileno() in fds: 
+        #     fds.remove(conn.fileno())        
+
+        fds.append(conn.fileno())
+        # fds.value = conn.fileno()
+
+        logging.debug(f"{threading.current_thread().name} +++++++++++++++++++ FD No: {fds}")
 
         data = bytes()
         continue_recv = True
@@ -112,12 +136,19 @@ class ThreadedServer(object):
         logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
         try:
             conn.sendall(data)
+
+            # Shall we try to close to avoid duplicate socket FDs?
+            # We also should update the list with the socket FDS that will be migrated?
+            fds.remove(conn.fileno())
+
+            conn.close()            
+            
             return
         except OSError as ex:
             logging.error(f"Exception {ex} with {str(ex)}")
             return
 
-    def listenToClient_mig(self, conn, addr):
+    def listenToClient_mig(self, conn, addr, fds):
         global migration_counter
 
         while True:
@@ -208,19 +239,25 @@ class ThreadedServer(object):
                 # TODO: These checks for the condition should be something different in the future
                 # can be something that comes from and IPC. 
                 if (addr[0] == "172.20.0.2") and (data.find("migration".encode()) != -1):
-                    client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    client_unix.connect("/tmp/test")
+                    # client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    # client_unix.connect("/tmp/test")
 
                     # print(f"FD No: {conn.fileno()}")
 
-                    # self.lock.acquire()
-
-                    self.send_fds(client_unix, b"AAAAA", [conn.fileno()])
-
                     # HERE we should dump all the sockets in a loop
+
+                    self.lock.acquire()
+
+                    for fd in fds:
+                        logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd}")
+                        client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
+                        client_unix.connect("/tmp/test")
+                        self.send_fds(client_unix, b"AAAAA", [fd])
+                        client_unix.close()
+                        time.sleep(5)
                     
-                    # self.lock.release()
-                    logging.debug("Sent FD")
+                    self.lock.release()
+                    logging.debug("Sent FDs")
 
                     # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
 

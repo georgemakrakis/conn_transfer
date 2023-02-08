@@ -19,6 +19,10 @@ SERVER_POOL = [('172.20.0.3', 80)]
 MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.3', 80)]
 # MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.7',80), ('172.20.0.3', 80)]
 
+# These ports will be used to also identify messages that are meant for migration
+#  and not client forwarded data
+MIG_PORTS = []
+
 # dumb python socket echo server, long tcp connection
 # $ ~  while  python server.py
 # SERVER_POOL = [('localhost', 6666)]
@@ -72,6 +76,9 @@ class LoadBalancer(object):
 
     # def __init__(self, sock, client_socket_local, algorithm='random'):
     def __init__(self, ip, port, algorithm='random'):
+        global MIG_PORTS
+        global MIG_SERVER_POOL
+
         self.ip = ip
         self.port = port
 
@@ -94,6 +101,10 @@ class LoadBalancer(object):
         
         # This will be a match of UUIDs and socket objects
         self.client_sockets_track = dict()
+
+        # we will assign and use the migration ports based on the number of servers.
+        for index, server in enumerate(SERVER_POOL):
+            MIG_PORTS.append(4000+index)
 
 
     def start(self):
@@ -191,6 +202,10 @@ class LoadBalancer(object):
     
     def on_recv(self, sock, data, unique_id):
         global IPs
+        
+        global MIG_SERVER_POOL
+        global MIG_PORTS
+
         socket_id = None
 
         new_sock = None
@@ -211,7 +226,7 @@ class LoadBalancer(object):
             socket_id = str(unique_id)
             self.client_sockets_track[socket_id] = sock
 
-            logging.debug(f"{threading.current_thread().name} {self.client_sockets_track}")
+            # logging.debug(f"{threading.current_thread().name} {self.client_sockets_track}")
 
         # NOTE: here we should check whether we migrate based on our algo
         # that will give us a list of client IPs to migrate. For now I leave the hardcoded IP
@@ -223,7 +238,18 @@ class LoadBalancer(object):
             logging.debug(f"{threading.current_thread().name} migration {self.migration_counter} is initiated...")
             logging.debug(f"{threading.current_thread().name} client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
-            remote_socket.send(mig_data)
+            if (sock.getpeername()[0], 80) in SERVER_POOL:
+                index = list(SERVER_POOL).index((sock.getpeername()[0], 80))
+                new_port = MIG_PORTS[index]
+                print(f"************NEW PORT************ {new_port}")
+                # sys.exit(1)
+
+            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_sock.bind(('172.20.0.2', new_port))
+            new_sock.connect((sock.getpeername()[0], 80))
+            new_sock.send(mig_data)
+
+            # remote_socket.send(mig_data)
             # remote_socket.send("threads_full".encode())
             logging.debug(f"{threading.current_thread().name} 2 sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
             return
@@ -297,9 +323,9 @@ class LoadBalancer(object):
         # remote_socket.send(data)
         # data = "migration".encode()
 
-        remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
-        logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
-        return
+        # remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
+        # logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
+        # return
 
 
     def on_close(self, sock):
