@@ -1,5 +1,6 @@
-import socket, array, time, os
+import socket, array, time, os, logging
 import subprocess, fcntl, select
+import errno
 
 # HOST = "0.0.0.0"
 HOST = "172.20.0.3"
@@ -9,6 +10,9 @@ TCP_REPAIR          = 19
 TCP_REPAIR_QUEUE    = 20
 
 migration_counter = 0
+
+logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.INFO)
 
 def recv_fds(sock, msglen, maxfds):
     fds = array.array("i")   # Array of ints
@@ -25,6 +29,8 @@ def send_fds(sock, msg, fds):
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
     # global migration_counter
 
+    migration_counter = 0
+
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
     server_socket.listen(100)
@@ -33,17 +39,48 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
     
     while True:
         conn, addr = server_socket.accept()
+        # conn.setblocking(False)
 
         with conn:
             print(f"Connected by {addr}")
             if addr[0] == "172.20.0.2":
                 print("waiting to recv")
 
-                data = conn.recv(1024)
-                if not data:
-                    print("NO DATA RECV")
-                    # break
+                # data = conn.recv(1024)
+                # if not data:
+                #     print("NO DATA RECV")
+                #     # break
+                #     continue
+                
+                data = bytes()
+                # TODO: Could that be "while True:" ?
+                continue_recv = True
+
+                while continue_recv:
+                    print("HERE!!!")
+                    try:
+                        # Try to receive some data
+                        data_recv = conn.recv(16)
+                        data += data_recv
+                        logging.debug(f"Data so far.. {data} with len {len(data)}")
+                        if not data_recv:
+                            logging.warning("NO DATA RECV")
+                            continue_recv = False
+                        if data.find(b"\r\n\r\n") != -1 :
+                            continue_recv = False
+                            migration_counter += 1
+                    except Exception as ex:
+                        logging.error(f"Exception {ex}")
+                        continue_recv = False
+                        
+                if migration_counter == 6:
+                    migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    migration_signal_sock.connect(("172.20.0.2", 80))
+                    migration_signal_sock.send("threads_full".encode())
+                    migration_signal_sock.close()
+                    migration_counter = 0
                     continue
+
 
                 # if addr[1] == (50630 + migration_counter):
                 if (data.find("mig_signal_2".encode()) != -1):

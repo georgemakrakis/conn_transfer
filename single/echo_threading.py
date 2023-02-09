@@ -72,12 +72,14 @@ class ThreadedServer(object):
                 self.listenToClient_mig(conn, addr, self.fds.value)
 
 
-                # TODO: Here we should release the migration_signal_sent
-                # self.migration_signal_sent = False
+                # TODO: Here we should release the migration_signal_sent 
+                # but we also need to kill the rest of threads 
+                # so the next contidion will not be triggered again.
+                self.migration_signal_sent = False
 
                 continue
 
-            # TODO: Should if not accepting more be putting the tasks in a queue and execute them later?
+            # TODO: Should if not accepting more, be putting the tasks in a queue and execute them later?
             if threading.active_count() <= self.threads:
                 new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value))
                 new_thread.start()
@@ -108,7 +110,7 @@ class ThreadedServer(object):
         # We remove the duplicate FDs. We do not need "while" instead of "if" here 
         # since FDs cannot be reused per https://man7.org/linux/man-pages/man2/close.2.html
         # if conn.fileno() in fds: 
-        #     fds.remove(conn.fileno())        
+        #     fds.remove(conn.fileno())
 
         fds.append(conn.fileno())
         # fds.value = conn.fileno()
@@ -116,6 +118,7 @@ class ThreadedServer(object):
         logging.debug(f"{threading.current_thread().name} +++++++++++++++++++ FD No: {fds}")
 
         data = bytes()
+        # TODO: Could that be "while True:" ?
         continue_recv = True
 
         while continue_recv:
@@ -132,6 +135,25 @@ class ThreadedServer(object):
             except Exception as ex:
                 logging.error(f"Exception {ex}")
                 continue_recv = False
+
+        # NOTE: Should that condition be here?
+        # if (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
+
+        #     # TODO: Do we need to pause all the other threads from execution? 
+        #     # Most probably we can't, see: https://stackoverflow.com/a/13399592/7189378
+        #     # We can attempt to make this hack with signals and flags but we might have 
+        #     # a sleep and performance issue that we want to measure.
+        #     # https://alibaba-cloud.medium.com/detailed-explanation-and-examples-of-the-suspension-recovery-and-exit-of-python-threads-d4c077509461 
+
+        #     logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
+        #     migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        #     migration_signal_sock.connect(("172.20.0.2", 80))
+        #     migration_signal_sock.send("threads_full".encode())
+
+        #     migration_signal_sock.close()
+        #     self.migration_signal_sent = True
+
+        #     return
                         
         logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
         try:
@@ -254,7 +276,7 @@ class ThreadedServer(object):
                         client_unix.connect("/tmp/test")
                         self.send_fds(client_unix, b"AAAAA", [fd])
                         client_unix.close()
-                        time.sleep(5)
+                        # time.sleep(5)
                     
                     self.lock.release()
                     logging.debug("Sent FDs")
