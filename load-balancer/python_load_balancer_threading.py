@@ -136,7 +136,8 @@ class LoadBalancer(object):
                                 # self.on_recv(sock, data)
                             else:
                                 logging.debug("=====IN=======")
-                                thread = threading.Thread(target=self.on_recv, args=(sock, data, None))
+                                thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
+                                # thread = threading.Thread(target=self.on_recv, args=(sock, data, None))
                                 thread.start()
                                 thread.join()
                         # else:
@@ -170,34 +171,40 @@ class LoadBalancer(object):
     def on_accept(self, client_socket, client_addr):
         # client_socket, client_addr = self.cs_socket.accept()
 
-        logging.info(f"client connected: {client_addr} <==> {self.cs_socket.getsockname()}")
+        # NOTE: Shall we do not open any downstream connections when we receive connection from the backend servers?
+
+        logging.info(f"{threading.current_thread().name} client connected: {client_addr} <==> {self.cs_socket.getsockname()}")
         # logging.debug(f"{threading.current_thread().name}Active Thread Count: {threading.active_count()}")
 
         # select a server that forwards packets to
         server_ip, server_port = self.select_server(SERVER_POOL, self.algorithm)
 
-        # init a server-side socket
-        ss_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            ss_socket.connect((server_ip, server_port))
-            logging.info(f"init server-side socket: {ss_socket.getsockname()}")
-            logging.info(f"server connected: {ss_socket.getsockname()} <==> {(socket.gethostbyname(server_ip), server_port)}")
-        except:
-            logging.info(f"Can't establish connection with remote server, err: {sys.exc_info()[0]}")
-            logging.info(f"Closing connection with client socket {client_addr}")
-            client_socket.close()
-            return
+        if client_addr[0] not in IPs:
+            # init a server-side socket
+            ss_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                ss_socket.connect((server_ip, server_port))
+                logging.info(f"{threading.current_thread().name} init server-side socket: {ss_socket.getsockname()}")
+                logging.info(f"{threading.current_thread().name} server connected: {ss_socket.getsockname()} <==> {(socket.gethostbyname(server_ip), server_port)}")
+            except:
+                logging.info(f"Can't establish connection with remote server, err: {sys.exc_info()[0]}")
+                logging.info(f"Closing connection with client socket {client_addr}")
+                client_socket.close()
+                return
 
         # client_socket.settimeout(0.1)
         client_socket.setblocking(0)
 
         self.sockets.append(client_socket)
-        self.sockets.append(ss_socket)
+        if client_addr[0] not in IPs:
+            self.sockets.append(ss_socket)
 
-        self.flow_table[client_socket] = ss_socket
-        self.flow_table[ss_socket] = client_socket
+            self.flow_table[client_socket] = ss_socket
+            self.flow_table[ss_socket] = client_socket
 
         # self.__client_socket = client_socket
+
+        return
 
     
     def on_recv(self, sock, data, unique_id):
@@ -214,8 +221,11 @@ class LoadBalancer(object):
         logging.info(f"recving packets: {sock.getpeername()} ==> {sock.getsockname()}, data: {data}")
         # data can be modified before forwarding to server
         # lots of add-on features can be added here
-        
-        remote_socket = self.flow_table[sock]
+
+        try:
+            remote_socket = self.flow_table[sock]
+        except KeyError as e:
+            logging.error(f"FLOWS KEY ERROR")
 
         # Check for clients that we need to migrate/handle connections
         if sock.getpeername()[0] not in IPs:
@@ -234,7 +244,10 @@ class LoadBalancer(object):
         
         # if sock.getpeername()[0] == "172.20.0.5":
         if (data.find("threads_full".encode()) != -1):
-            mig_data = f"migration:{socket_id}:\r\n\r\n".encode()
+             
+            socket_id = data.decode().split("$",2)[1]
+
+            mig_data = f"migration${socket_id}$\r\n\r\n".encode()
             logging.debug(f"{threading.current_thread().name} migration {self.migration_counter} is initiated...")
             logging.debug(f"{threading.current_thread().name} client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
@@ -247,11 +260,26 @@ class LoadBalancer(object):
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             new_sock.bind(('172.20.0.2', new_port))
             new_sock.connect((sock.getpeername()[0], 80))
+
+
+            # Since we are opening connections outside of the on_accept() we need the following
+            self.sockets.append(new_sock)
+            self.sockets.append(sock)
+
+            self.flow_table[new_sock] = sock
+            self.flow_table[sock] = new_sock
+            
+            # sock.close()
+            # self.sockets.remove(sock)
             new_sock.send(mig_data)
 
             # remote_socket.send(mig_data)
             # remote_socket.send("threads_full".encode())
-            logging.debug(f"{threading.current_thread().name} 2 sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
+            logging.debug(f"{threading.current_thread().name} 2 sending packets: {new_sock.getsockname()} ==> {new_sock.getpeername()}, data: {mig_data}")
+
+            # TODO: THIS IS A STUPID WAY FOR TESTING ***REMOVE***
+            self.migration_counter = self.MIGRATION_TIMES
+
             return
         
         # if (data.find("migration".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
@@ -295,20 +323,23 @@ class LoadBalancer(object):
             
         #     mig_data = f"migration:{socket_id}:\r\n\r\n".encode()
 
-        # if self.migration_counter == self.MIGRATION_TIMES:
-        #     self.migration_counter = 0
+        if (self.migration_counter == self.MIGRATION_TIMES) and (data.find("$".encode()) != -1):
+            self.migration_counter = 0
 
-        #     logging.debug(f"{threading.current_thread().name} Here 3")       
+            logging.debug(f"{threading.current_thread().name} Here 3")       
 
-        #     socket_id = data.decode().split(":",2)[1]
+            # socket_id = data.decode().split(":",2)[1]
+            socket_id = data.decode().split("$",2)[1]
 
-        #     remote_socket = self.client_sockets_track[socket_id]
+            remote_socket = self.client_sockets_track[socket_id]
 
-        #     data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}"
-        #     remote_socket.send(data.encode())
-        #     logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
+            data = data.decode().replace(f"${socket_id}$", "")
+            data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.encode()}"
             
-        #     return
+            remote_socket.send(data.encode())
+            logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
+            
+            return
 
         # else:
         #     new_sock.send(mig_data)
@@ -322,10 +353,15 @@ class LoadBalancer(object):
             
         # remote_socket.send(data)
         # data = "migration".encode()
-
+        
         # remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
-        # logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
-        # return
+        if socket_id == None:
+            remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
+        else:
+            remote_socket.send(f"${socket_id}${data.decode()}".encode())
+
+        logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
+        return
 
 
     def on_close(self, sock):

@@ -73,11 +73,18 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                         logging.error(f"Exception {ex}")
                         continue_recv = False
                         
-                if migration_counter == 6:
+                if migration_counter == 6:                    
                     migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     migration_signal_sock.connect(("172.20.0.2", 80))
-                    migration_signal_sock.send("threads_full".encode())
+                    socket_id = None
+                    try:
+                        socket_id = data.decode().split("$",2)[1]
+                    except IndexError as e:
+                        logging.error(f"{e}")
+                    migration_signal_sock.send(f"threads_full${socket_id}$".encode())
+                    logging.info(f" SENT FULL!!! with: {migration_signal_sock.getsockname()}")
                     migration_signal_sock.close()
+                    
                     migration_counter = 0
                     continue
 
@@ -157,8 +164,13 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                     # TODO: maybe need to wait here for a bit?
 
                     # mig_data = "migrated"
-                    # os.write(client.fileno(), mig_data.encode())
-                
+                    # os.write(client.fileno(), mig_data.encode())                    
+                else:
+                    socket_id = data.decode().split("$",2)[1]
+                    logging.debug(f"!!!SOCKET ID!!! {socket_id}")
+                    new_string = data.decode().replace(f"${socket_id}$", "")
+                    data = new_string.encode()
+
                 print(f"WILL SEND: {data}")
                 try:
                     # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
