@@ -11,8 +11,8 @@ TCP_REPAIR_QUEUE    = 20
 
 migration_counter = 0
 
-logging.basicConfig(level=logging.DEBUG)
-# logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 def recv_fds(sock, msglen, maxfds):
     fds = array.array("i")   # Array of ints
@@ -57,7 +57,6 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                 continue_recv = True
 
                 while continue_recv:
-                    print("HERE!!!")
                     try:
                         # Try to receive some data
                         data_recv = conn.recv(16)
@@ -82,7 +81,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                     except IndexError as e:
                         logging.error(f"{e}")
                     migration_signal_sock.send(f"threads_full${socket_id}$".encode())
-                    logging.info(f" SENT FULL!!! with: {migration_signal_sock.getsockname()}")
+                    # logging.info(f"SENT FULL!!! with: {migration_signal_sock.getsockname()}")
                     migration_signal_sock.close()
                     
                     migration_counter = 0
@@ -94,33 +93,33 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                     try:
                         conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
                         
-                        print("Restoring")
+                        logging.debug("Restoring")
 
                         inq = None
-                        with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
+                        with open("/migvolume1/_dump_inq.dat", mode="rb") as inq_file:
                             inq = inq_file.read()
                         
                         if inq == None:
-                            print("INQ NONE")
+                            logging.debug("INQ NONE")
 
                         if inq == b'':
-                            print("INQ empty, correcting...")
+                            logging.warning("INQ empty, correcting...")
                             inq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
 
-                        print(inq)
+                        logging.debug(inq)
 
                         outq = None
-                        with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
+                        with open("/migvolume1/_dump_outq.dat", mode="rb") as outq_file:
                             outq = outq_file.read()
 
                         if outq == None:
-                            print("OUTQ NONE")
+                            logging.debug("OUTQ NONE")
 
                         if outq == b'':
-                            print("OUTQ empty, correcting...")
+                            logging.warning("OUTQ empty, correcting...")
                             outq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
 
-                        print(outq)
+                        logging.debug(outq)
 
                         # print(f"New SEQ num: {conn.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)}")
 
@@ -134,44 +133,53 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                         # Let's proceed with sending the new data
                         conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 0)
 
-                        migration_counter += 1
+                        # migration_counter += 1
 
                     except Exception as ex:
-                        print("Could not use TCP_REPAIR mode")
+                        # print("Could not use TCP_REPAIR mode")
+                        logging.error(f"Issue with Socket Restoration {ex}")
 
                 # TODO: These checks for the condition should be something different in the future
                 # can be something that comes from and IPC. 
-                if (addr[0] == "172.20.0.2") and (data.find("migration".encode()) != -1):
+                elif (addr[0] == "172.20.0.2") and (data.find("migration".encode()) != -1):
                     client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                     client_unix.connect("/tmp/test")
 
                     # print(f"FD No: {conn.fileno()}")
 
                     send_fds(client_unix, b"AAAAA", [conn.fileno()])
-                    print("Sent FD")
+                    logging.debug("Sent FD")
 
                     # NOTE: here also we need to have dynamically the server that the files
                     # will be sent to.
                     #cmd_list = ["sshpass", "-p", "123456", "scp",
                     #            "-o", "StrictHostKeyChecking=no", 
                     #            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
-                    #            "root@172.20.0.4:/root/single"]                    
-
+                    #            "root@172.20.0.4:/root/single"]
+                    
                     #subprocess.call(cmd_list)
-                    print("Copied dumped files...")
+                    
+                    # TODO: This should be more pinpointed to the senders tcp ports
+                    # IP_cmd_list = ["iptables", "-A", "OUTPUT", "-s", 
+                    #                 "172.20.0.3/16", "-p", "tcp", 
+                    #                 "--tcp-flags", "ACK", "ACK", "-j", 
+                    #                 "DROP"]
+                    # subprocess.call(IP_cmd_list)
+                    
+                    logging.info("Copied dumped files...")
                     # print(f"FD No after: {conn.fileno()}")
 
                     # TODO: maybe need to wait here for a bit?
 
                     # mig_data = "migrated"
-                    # os.write(client.fileno(), mig_data.encode())                    
+                    # os.write(client.fileno(), mig_data.encode())                                  
                 else:
-                    socket_id = data.decode().split("$",2)[1]
-                    logging.debug(f"!!!SOCKET ID!!! {socket_id}")
+                    socket_id = data.decode().split("$",2)[1]                    
                     new_string = data.decode().replace(f"${socket_id}$", "")
                     data = new_string.encode()
 
-                print(f"WILL SEND: {data}")
+                logging.info(f"WILL SEND: {data}")
+                logging.debug(f"THE SOCKET DESCRIPTOR CURRENTLY IS: {conn.fileno()}")
                 try:
                     # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
                     conn.sendall(data)
@@ -180,16 +188,17 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                     # if sent == 0 or sent < len(data):
                     #     print(f"Problem with conn {conn.getsockname()} --> {conn.getpeername()}")
 
-                    conn.close()
+                    # conn.close()
 
                 except OSError as ex:
-                    print(f"OSError {ex}")
+                    logging.error(f"OSError {ex}")
 
-                    print("Trying one more time")
+                    logging.warning("Trying one more time")
                     conn.sendall(data)
                     # sent = conn.send(data)
                     # if sent == 0 or sent < len(data):
                     #     print(f"Problem with conn {conn.getsockname()} --> {conn.getpeername()}")
+                    # conn.close()
 
 
                     # print(f"SOCK {conn.getsockname()} --> {conn.getpeername()}")
