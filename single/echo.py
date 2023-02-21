@@ -147,6 +147,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
 
                     # print(f"FD No: {conn.fileno()}")
 
+                    time.sleep(7)
+
                     send_fds(client_unix, b"AAAAA", [conn.fileno()])
                     logging.debug("Sent FD")
 
@@ -160,11 +162,18 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                     #subprocess.call(cmd_list)
                     
                     # TODO: This should be more pinpointed to the senders tcp ports
-                    # IP_cmd_list = ["iptables", "-A", "OUTPUT", "-s", 
+                    # But if we specify it like this, do we have to keep track of 
+                    # the port numbers of the other end?
+                    # iptables_cmd_add_list = ["iptables", "-A", "OUTPUT", "-s", 
                     #                 "172.20.0.3/16", "-p", "tcp", 
                     #                 "--tcp-flags", "ACK", "ACK", "-j", 
                     #                 "DROP"]
-                    # subprocess.call(IP_cmd_list)
+                    # subprocess.call(iptables_cmd_add_list)
+
+                    iptables_cmd_del_list = ["iptables", "-F", "OUTPUT"]
+                    subprocess.call(iptables_cmd_del_list)
+
+
                     
                     logging.info("Copied dumped files...")
                     # print(f"FD No after: {conn.fileno()}")
@@ -172,11 +181,22 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
                     # TODO: maybe need to wait here for a bit?
 
                     # mig_data = "migrated"
-                    # os.write(client.fileno(), mig_data.encode())                                  
+                    # os.write(client.fileno(), mig_data.encode())
                 else:
-                    socket_id = data.decode().split("$",2)[1]                    
+                    socket_id = data.decode().split("$",2)[1]
                     new_string = data.decode().replace(f"${socket_id}$", "")
                     data = new_string.encode()
+
+                # Add this rule before we send the data
+                # NOTE: But if we specify it like this, do we have to keep track of 
+                # the port numbers of the other end?
+                iptables_cmd_add_list = ["iptables", "-A", "OUTPUT", "-p", "tcp", 
+                                "-s", "172.20.0.3", 
+                                "--dport", str(addr[1]), 
+                                # "--tcp-flags", "ACK", "ACK", "-j", "DROP"]
+                                "--tcp-flags", "ACK", "ACK", "-j", "DROP"]
+
+                subprocess.call(iptables_cmd_add_list)
 
                 logging.info(f"WILL SEND: {data}")
                 logging.debug(f"THE SOCKET DESCRIPTOR CURRENTLY IS: {conn.fileno()}")
