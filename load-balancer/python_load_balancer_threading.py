@@ -1,6 +1,6 @@
 # From: https://gist.github.com/zhouchangxun/5750b4636cc070ac01385d89946e0a7b
 
-import sys, logging
+import sys, logging, re
 import socket
 import select
 import random, uuid
@@ -103,8 +103,9 @@ class LoadBalancer(object):
         self.client_sockets_track = dict()
 
         # we will assign and use the migration ports based on the number of servers.
-        for index, server in enumerate(SERVER_POOL):
-            MIG_PORTS.append(4000+index)
+        # for index, server in enumerate(MIG_SERVER_POOL):
+        #     MIG_PORTS.append(4000+index)
+        MIG_PORTS.append(4001)
 
 
     def start(self):
@@ -261,6 +262,9 @@ class LoadBalancer(object):
             if (sock.getpeername()[0], 80) in SERVER_POOL:
                 index = list(SERVER_POOL).index((sock.getpeername()[0], 80))
                 new_port = MIG_PORTS[index]
+                MIG_PORTS[index] = new_port+1
+
+                logging.debug(f"New port {new_port}")
                 # sys.exit(1)
 
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -304,30 +308,44 @@ class LoadBalancer(object):
             # sock.close()
             # del self.flow_table[sock]
 
+            socket_ids = re.findall("\\$(.+?)\\$", data.decode())
+
             socket_id = data.decode().split("$",2)[1]
+            dumped_sockets_num = data.decode().split("@",2)[1]
+
+            next_server = round_robin(MIG_ITER)
+            try:
+                # +1 is for the migration signal
+                for dumped_sock in range(int(dumped_sockets_num)+1):
+            
+                    # self.migration_counter += 1
+                    new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+                    # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
+                    new_sock.connect(next_server)
+
+                    logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
+
+                    self.sockets.append(new_sock)
+                    self.sockets.append(sock)
+
+                    self.flow_table[new_sock] = sock
+                    self.flow_table[sock] = new_sock
+
+                    # NOTE: This is a naive way to send a second signal to the entity that will retrieve
+                    # the migration data (can be anything, just make two distinct operations, dump/restore)
+                    # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
+                    mig_data = f"mig_signal_2${socket_ids[dumped_sock]}$@{dumped_sock+1}@\n".encode()
+
+                    # NOTE: We do not go to the if statements below here since we have to do that recursively for all the dumped sockets.
+                    remote_socket = new_sock
+                    remote_socket.send(f"{mig_data.decode()}".encode())
+                    logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
+
+                return
+            except ValueError as err:
+                    logging.error(err)
         
-            # self.migration_counter += 1
-            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-            # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
-            new_sock.connect(round_robin(MIG_ITER))
-
-            logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
-
-            self.sockets.append(new_sock)
-            self.sockets.append(sock)
-
-            self.flow_table[new_sock] = sock
-            self.flow_table[sock] = new_sock
-
-            # NOTE: This is a naive way to send a second signal to the entity that will retrieve
-            # the migration data (can be anything, just make two distinct operations, dump/restore)
-            # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
-            mig_data = f"mig_signal_2${socket_id}$\n".encode()
-
-            remote_socket = new_sock
-        
-            # return
 
         if (data.find("mig_signal_2".encode()) != -1) and (self.migration_counter != self.MIGRATION_TIMES):
             # NOTE: If we do it this way, we mean only dumping and restore to another machine
@@ -364,15 +382,17 @@ class LoadBalancer(object):
 
             # socket_id = data.decode().split(":",2)[1]
             socket_id = data.decode().split("$",2)[1]
+            dumped_sockets_num = data.decode().split("@",2)[1]
 
             remote_socket = self.client_sockets_track[socket_id]
 
             data = data.decode().replace(f"${socket_id}$", "")
+            data = data.replace(f"@{dumped_sockets_num}@", "")
             # data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.encode()}"
             data = data.encode()
             
             # TODO: The follwing send or the one outside the if-else is probably redundant and can be removed
-            remote_socket.send(data.encode())
+            remote_socket.send(data)
             logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
             
             return

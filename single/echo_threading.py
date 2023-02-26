@@ -117,43 +117,46 @@ class ThreadedServer(object):
     # def handle_data(self, conn, data, addr, fds, migration_signal_sent):
         global migration_signal_sent
 
-        try:
-            socket_id = data.decode().split("$",2)[1]
-        except IndexError as er:
-            logging.error(er)
+        # We lock the access to the global resource and to the if statement
+        # so other threads will not be able to access it and send duplicate messages to the LB
+        with self.lock:
+            # if (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
+            if (threading.active_count() > self.threads) and (not migration_signal_sent) and (data.find(b"\n") != -1): # Now we send the migration condition signal
+                try:
+                    socket_id = data.decode().split("$",2)[1]
+                except IndexError as er:
+                    logging.error(er)
+                # TODO: Do we need to pause all the other threads from execution? 
+                # Most probably we can't, see: https://stackoverflow.com/a/13399592/7189378
+                # We can attempt to make this hack with signals and flags but we might have 
+                # a sleep and performance issue that we want to measure.
+                # https://alibaba-cloud.medium.com/detailed-explanation-and-examples-of-the-suspension-recovery-and-exit-of-python-threads-d4c077509461 
 
-        # if (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
-        if (threading.active_count() > self.threads) and (not migration_signal_sent): # Now we send the migration condition signal
+                logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
+                migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                migration_signal_sock.connect(("172.20.0.2", 80))
+                migration_signal_sock.send(f"threads_full${socket_id}$\n".encode())
 
-            # TODO: Do we need to pause all the other threads from execution? 
-            # Most probably we can't, see: https://stackoverflow.com/a/13399592/7189378
-            # We can attempt to make this hack with signals and flags but we might have 
-            # a sleep and performance issue that we want to measure.
-            # https://alibaba-cloud.medium.com/detailed-explanation-and-examples-of-the-suspension-recovery-and-exit-of-python-threads-d4c077509461 
+                migration_signal_sock.close()
+                # self.migration_signal_sent = True
+                migration_signal_sent = True
 
-            logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
-            migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            migration_signal_sock.connect(("172.20.0.2", 80))
-            migration_signal_sock.send(f"threads_full${socket_id}$".encode())
-
-            migration_signal_sock.close()
-            # self.migration_signal_sent = True
-            migration_signal_sent = True
-
-            # NOTE: We do not return here since this action will close the socket as well 
-            # while we want it to be in ESTABLISHED state.
-            return 2
+                # NOTE: We do not return here since this action will close the socket as well 
+                # while we want it to be in ESTABLISHED state.
+                return 2
         
         if (data.find("mig_signal_2".encode()) != -1) and (data.find(b"\n") != -1):
             try:
                 # self.lock.acquire()
+
+                dumped_socket_num = (int)(data.decode().split("@",2)[1])
 
                 conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
                 
                 logging.debug("Restoring...")
 
                 inq = None
-                with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
+                with open(f"/migvolume1/{dumped_socket_num}_dump_inq.dat", mode="rb") as inq_file:
                     inq = inq_file.read()
                 
                 if inq == None:
@@ -166,7 +169,7 @@ class ThreadedServer(object):
                 logging.debug(inq)
 
                 outq = None
-                with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
+                with open(f"/migvolume1/{dumped_socket_num}_dump_outq.dat", mode="rb") as outq_file:
                     outq = outq_file.read()
 
                 if outq == None:
@@ -190,7 +193,10 @@ class ThreadedServer(object):
                 # Let's proceed with sending the new data
                 conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 0)
 
-                migration_counter += 1
+                # migration_counter += 1
+
+                logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
+                conn.sendall(data)
 
                 return 4
 
@@ -208,19 +214,35 @@ class ThreadedServer(object):
 
             print(f"Current FD No: {conn.fileno()}")
 
+            try:
+                socket_id = data.decode().split("$",2)[1]
+            except IndexError as er:
+                logging.error(er)
+
             # time.sleep(10)
 
             self.lock.acquire()
+            dumped_sockets_num = 0
 
-            # TODO: Shall that be -1 i.e. the last thread that is used for migration signals?
-            for fd in fds:
-                logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd}")
-                client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
-                client_unix.connect("/tmp/test")
-                self.send_fds(client_unix, b"AAAAA", [fd])
-                client_unix.close()
-                # time.sleep(5)
+            dumped_socket_ids = ""
             
+            # NOTE: Dump half of the sockets (say the first half)
+            for index, fd in enumerate(fds):
+                if index == round((len)(fds)/2):
+                    break
+                if fd[1] != conn.fileno(): # We do not want the current socket to be migrated.
+                    logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd[1]}")
+                    client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
+                    client_unix.connect("/tmp/test")
+                    self.send_fds(client_unix, b"AAAAA", [fd[1]])
+                    client_unix.close()
+                    dumped_sockets_num += 1
+                    # time.sleep(5)
+
+                dumped_socket_ids += f"${fd[0]}$"
+            
+            # Add also the socket_id for the migration signal socket
+            dumped_socket_ids += f"${socket_id}$"
             self.lock.release()
             logging.debug("Sent FDs")
 
@@ -237,18 +259,30 @@ class ThreadedServer(object):
             logging.info("Copied dumped files...")
             # print(f"FD No after: {conn.fileno()}")
 
-            # TODO: maybe need to wait here for a bit?
-
-            # mig_data = "migrated"
-            # os.write(client.fileno(), mig_data.encode())
-
+            # TODO: What if we do not send data back but we just stop the from beeing sent
+            # by blocking them using IPTables? (maybe do not block ACK since we might have duplicate messages)
+            data = data.decode().replace("\n", "")
+            data = data.replace(f"${socket_id}$", dumped_socket_ids)
+            data = f"{data}@{dumped_sockets_num}@\n".encode()
+            logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
             conn.sendall(data)
+            
+            with self.lock:
+                migration_signal_sent = False
 
             return 3
         
 
         # if data.find(b"\r\n\r\n") != -1 :
         if data.find(b"\n") != -1 :
+
+            try:
+                socket_id = data.decode().split("$",2)[1]
+            except IndexError as er:
+                logging.error(er)
+
+            fds.append((socket_id, conn.fileno()))
+
             conn.sendall(data)
             return 1
 
@@ -263,7 +297,7 @@ class ThreadedServer(object):
         # if conn.fileno() in fds: 
         #     fds.remove(conn.fileno())
 
-        fds.append(conn.fileno())
+        # fds.append(conn.fileno())
         # fds.value = conn.fileno()
 
         logging.debug(f"{threading.current_thread().name} +++++++++++++++++++ FD No: {fds}")
