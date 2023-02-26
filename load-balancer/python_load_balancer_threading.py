@@ -139,7 +139,7 @@ class LoadBalancer(object):
                                 thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
                                 # thread = threading.Thread(target=self.on_recv, args=(sock, data, None))
                                 thread.start()
-                                thread.join()
+                                # thread.join()
                         # else:
                         #     # TODO: we might want to add the backend server connections
                         #     # to the dict() as well
@@ -232,9 +232,15 @@ class LoadBalancer(object):
             remote_socket = self.flow_table[sock]  
 
             # Add the UUID to the dictionary along with the sock
-            # to keep track of migrations
-            socket_id = str(unique_id)
-            self.client_sockets_track[socket_id] = sock
+            # to keep track of migrations if id not not exist before (i.e. active connection)
+            if sock not in self.client_sockets_track.values():
+                socket_id = str(unique_id)
+                self.client_sockets_track[socket_id] = sock
+            else:
+                temp_list_values = list(self.client_sockets_track.values())
+                temp_list_keys = list(self.client_sockets_track.keys())
+                socket_id_position = temp_list_values.index(sock)
+                socket_id = temp_list_keys[socket_id_position]
 
             # logging.debug(f"{threading.current_thread().name} {self.client_sockets_track}")
 
@@ -247,7 +253,8 @@ class LoadBalancer(object):
              
             socket_id = data.decode().split("$",2)[1]
 
-            mig_data = f"migration${socket_id}$\r\n\r\n".encode()
+            # mig_data = f"migration${socket_id}$\r\n\r\n".encode()
+            mig_data = f"migration${socket_id}$\n".encode()
             logging.debug(f"{threading.current_thread().name} migration {self.migration_counter} is initiated...")
             logging.debug(f"{threading.current_thread().name} client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
@@ -292,6 +299,11 @@ class LoadBalancer(object):
             
             logging.debug(f"{threading.current_thread().name} Here 1")
 
+            # Let's remove and close the connection with the 400* port
+            # self.sockets.remove(sock)
+            # sock.close()
+            # del self.flow_table[sock]
+
             socket_id = data.decode().split("$",2)[1]
         
             # self.migration_counter += 1
@@ -310,7 +322,8 @@ class LoadBalancer(object):
 
             # NOTE: This is a naive way to send a second signal to the entity that will retrieve
             # the migration data (can be anything, just make two distinct operations, dump/restore)
-            mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
+            # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
+            mig_data = f"mig_signal_2${socket_id}$\n".encode()
 
             remote_socket = new_sock
         
@@ -355,7 +368,8 @@ class LoadBalancer(object):
             remote_socket = self.client_sockets_track[socket_id]
 
             data = data.decode().replace(f"${socket_id}$", "")
-            data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.encode()}"
+            # data = f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.encode()}"
+            data = data.encode()
             
             # TODO: The follwing send or the one outside the if-else is probably redundant and can be removed
             remote_socket.send(data.encode())
@@ -378,7 +392,8 @@ class LoadBalancer(object):
         
         # remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
         if socket_id == None:
-            remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
+            # remote_socket.send(f"HTTP/1.1 200 OK\n\nContent-Length: {len(data)}\n\nContent-Type: text/plain\n\nConnection: Closed\n\n{data.decode()}".encode())
+            remote_socket.send(f"{data.decode()}".encode())
             logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
         else:
             if mig_data != None:
@@ -386,9 +401,10 @@ class LoadBalancer(object):
                 logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
             else:
                 remote_socket.send(f"${socket_id}${data.decode()}".encode())
+                # remote_socket.send(f"{data.decode()}".encode())
                 logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
         
-        return
+        # return
 
 
     def on_close(self, sock):

@@ -10,7 +10,7 @@ RUN apt install software-properties-common -y
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt update
-RUN apt install curl nano make wget ssh lynx iproute2 net-tools iptables sshpass python3.6 python3-pip python3.6-distutils libnl-3-dev libnet-dev libuuid1 uuid-dev -y
+RUN apt install curl nano make wget ssh netcat lynx iproute2 net-tools iptables sshpass python3.6 python3-pip python3.6-distutils libnl-3-dev libnet-dev libuuid1 uuid-dev -y
 RUN apt update
 
 # To dump the whole process
@@ -28,6 +28,7 @@ RUN pip3 install virtualenv
 RUN pip3 install flask
 RUN pip3 install gunicorn
 RUN pip3 install Flask-Limiter
+RUN pip3 install nclib
 
 # To dump the whole process
 #RUN wget -O 'criu_3.6-2_amd64.deb' "https://launchpad.net/ubuntu/+archive/primary/+files/criu_3.6-2_amd64.deb"

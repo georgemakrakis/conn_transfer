@@ -16,6 +16,9 @@ migration_counter = 0
 logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
+# migration_signal_sent = threading.local()
+migration_signal_sent = False
+
 class ThreadedServer(object):
     def __init__(self, host, port, threads):
         self.host = host
@@ -31,10 +34,12 @@ class ThreadedServer(object):
 
         self.lock = threading.Lock()
 
-        self.fds = threading.local()        
+        self.fds = threading.local() 
+
         self.last_fd = None
 
-        self.migration_signal_sent = False
+        # self.migration_signal_sent = False
+        # self.migration_signal_sent = threading.local()
 
     def recv_fds(self, sock, msglen, maxfds):
         fds = array.array("i")   # Array of ints
@@ -49,10 +54,14 @@ class ThreadedServer(object):
         return sock.sendmsg([msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
 
     def listen(self):
-        self.sock.listen(100)
+        # self.sock.listen(100)
+        self.sock.listen()
         logging.info("Listening on port %s ..." % PORT)
         
         self.fds.value = []
+        # self.migration_signal_sent.value = False
+        # global migration_signal_sent
+        # migration_signal_sent.value = False
 
         while True:
             logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}")
@@ -60,51 +69,193 @@ class ThreadedServer(object):
             conn, addr = self.sock.accept()
             conn.settimeout(100)
 
-            # TODO each one of these ports should be read from a config file along with the LB IP and current server IP.
-            if (self.migration_signal_sent) and (conn.getpeername()[1] == 4000):
-            # if self.migration_signal_sent:
-                # NOTE: could that be with thread?
-                # new_thread = threading.Thread(target = self.listenToClient_mig, args = (conn,addr))
-                # new_thread.start()
+            print(f"Connected by {addr}")
 
-                logging.debug(f"{threading.current_thread().name} ++++++++++ {self.fds.value}")
+            # # TODO each one of these ports should be read from a config file along with the LB IP and current server IP.
+            # if (self.migration_signal_sent) and (conn.getpeername()[1] == 4000):
+            # # if self.migration_signal_sent:
+            #     # NOTE: could that be with thread?
+            #     # new_thread = threading.Thread(target = self.listenToClient_mig, args = (conn,addr))
+            #     # new_thread.start()
 
-                self.listenToClient_mig(conn, addr, self.fds.value)
+            #     logging.debug(f"{threading.current_thread().name} ++++++++++ {self.fds.value}")
+
+            #     self.listenToClient_mig(conn, addr, self.fds.value)
 
 
-                # TODO: Here we should release the migration_signal_sent 
-                # but we also need to kill the rest of threads 
-                # so the next contidion will not be triggered again.
-                self.migration_signal_sent = False
+            #     # TODO: Here we should release the migration_signal_sent 
+            #     # but we also need to kill the rest of threads 
+            #     # so the next contidion will not be triggered again.
+            #     self.migration_signal_sent = False
 
-                continue
+            #     continue
 
             # TODO: Should if not accepting more, be putting the tasks in a queue and execute them later?
-            if threading.active_count() <= self.threads:
-                new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value))
-                new_thread.start()
-            elif (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
+            # if threading.active_count() <= self.threads:
+            # new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value, self.migration_signal_sent.value))
+            new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value))
+            new_thread.start()
 
-                # TODO: Do we need to pause all the other threads from execution? 
-                # Most probably we can't, see: https://stackoverflow.com/a/13399592/7189378
-                # We can attempt to make this hack with signals and flags but we might have 
-                # a sleep and performance issue that we want to measure.
-                # https://alibaba-cloud.medium.com/detailed-explanation-and-examples-of-the-suspension-recovery-and-exit-of-python-threads-d4c077509461 
+            # NOTE: That is an arbitrary condition for simple testing, 
+            # can be somethine else like the volume of traffic that triggers the migration
+            # elif (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
 
-                logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
-                migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                migration_signal_sock.connect(("172.20.0.2", 80))
-                migration_signal_sock.send("threads_full".encode())
+            #     logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
+            #     migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            #     migration_signal_sock.connect(("172.20.0.2", 80))
+            #     migration_signal_sock.send("threads_full\n".encode())
 
-                migration_signal_sock.close()
-                self.migration_signal_sent = True
-                continue
-                # break
+            #     migration_signal_sock.close()
+            #     self.migration_signal_sent = True
+            #     continue
+            #     # break
 
 
             # self.executor.submit(self.listenToClient, conn, addr)
 
+    def handle_data(self, conn, data, addr, fds):
+    # def handle_data(self, conn, data, addr, fds, migration_signal_sent):
+        global migration_signal_sent
+
+        try:
+            socket_id = data.decode().split("$",2)[1]
+        except IndexError as er:
+            logging.error(er)
+
+        # if (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
+        if (threading.active_count() > self.threads) and (not migration_signal_sent): # Now we send the migration condition signal
+
+            # TODO: Do we need to pause all the other threads from execution? 
+            # Most probably we can't, see: https://stackoverflow.com/a/13399592/7189378
+            # We can attempt to make this hack with signals and flags but we might have 
+            # a sleep and performance issue that we want to measure.
+            # https://alibaba-cloud.medium.com/detailed-explanation-and-examples-of-the-suspension-recovery-and-exit-of-python-threads-d4c077509461 
+
+            logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
+            migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            migration_signal_sock.connect(("172.20.0.2", 80))
+            migration_signal_sock.send(f"threads_full${socket_id}$".encode())
+
+            migration_signal_sock.close()
+            # self.migration_signal_sent = True
+            migration_signal_sent = True
+
+            # NOTE: We do not return here since this action will close the socket as well 
+            # while we want it to be in ESTABLISHED state.
+            return 2
+        
+        if (data.find("mig_signal_2".encode()) != -1) and (data.find(b"\n") != -1):
+            try:
+                # self.lock.acquire()
+
+                conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
+                
+                logging.debug("Restoring...")
+
+                inq = None
+                with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
+                    inq = inq_file.read()
+                
+                if inq == None:
+                    logging.debug("INQ NONE")
+
+                if inq == b'':
+                    logging.warning("INQ empty, correcting...")
+                    inq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
+
+                logging.debug(inq)
+
+                outq = None
+                with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
+                    outq = outq_file.read()
+
+                if outq == None:
+                    logging.debug("OUTQ NONE")
+
+                if outq == b'':
+                    logging.warning("OUTQ empty, correcting...")
+                    outq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
+
+                logging.debug(outq)
+
+                # print(f"New SEQ num: {conn.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)}")
+
+                # conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+                conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, outq)
+        
+                conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, inq)
+        
+
+                # Let's proceed with sending the new data
+                conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 0)
+
+                migration_counter += 1
+
+                return 4
+
+                # self.lock.release()
+
+            except Exception as ex:
+                # print("Could not use TCP_REPAIR mode")
+                logging.error(f"Issue with Socket Restoration {ex}")
+
+            # TODO: These checks for the condition should be something different in the future
+            # can be something that comes from and IPC. 
+        if (addr[0] == "172.20.0.2") and (data.find("migration".encode()) != -1) and (data.find(b"\n") != -1):
+            # client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            # client_unix.connect("/tmp/test")
+
+            print(f"Current FD No: {conn.fileno()}")
+
+            # time.sleep(10)
+
+            self.lock.acquire()
+
+            # TODO: Shall that be -1 i.e. the last thread that is used for migration signals?
+            for fd in fds:
+                logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd}")
+                client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
+                client_unix.connect("/tmp/test")
+                self.send_fds(client_unix, b"AAAAA", [fd])
+                client_unix.close()
+                # time.sleep(5)
+            
+            self.lock.release()
+            logging.debug("Sent FDs")
+
+            # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
+
+            # NOTE: here also we need to have dynamically the server that the files
+            # will be sent to.
+            #cmd_list = ["sshpass", "-p", "123456", "scp",
+            #            "-o", "StrictHostKeyChecking=no", 
+            #            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
+            #            "root@172.20.0.4:/root/single"]                    
+
+            #subprocess.call(cmd_list)
+            logging.info("Copied dumped files...")
+            # print(f"FD No after: {conn.fileno()}")
+
+            # TODO: maybe need to wait here for a bit?
+
+            # mig_data = "migrated"
+            # os.write(client.fileno(), mig_data.encode())
+
+            conn.sendall(data)
+
+            return 3
+        
+
+        # if data.find(b"\r\n\r\n") != -1 :
+        if data.find(b"\n") != -1 :
+            conn.sendall(data)
+            return 1
+
+
     def listenToClient(self, conn, addr, fds):
+        # global migration_signal_sent
+        # migration_signal_sent.value = False
         logging.info("waiting to recv")
 
         # We remove the duplicate FDs. We do not need "while" instead of "if" here 
@@ -118,10 +269,10 @@ class ThreadedServer(object):
         logging.debug(f"{threading.current_thread().name} +++++++++++++++++++ FD No: {fds}")
 
         data = bytes()
-        # TODO: Could that be "while True:" ?
-        continue_recv = True
-
-        while continue_recv:
+        
+        # We never return from the loop to keep the connection alive
+        # (this is what we need for our first experiments)
+        while True:
             try:
                 # Try to receive some data
                 data_recv = conn.recv(16)
@@ -129,12 +280,28 @@ class ThreadedServer(object):
                 # logging.debug(f"{threading.current_thread().name}  Data so far.. {data} with len {len(data)}")
                 if not data_recv:
                     logging.warning("NO DATA RECV")
-                    continue_recv = False
-                if data.find(b"\r\n\r\n") != -1 :
-                    continue_recv = False                        
+                    break
+
+                handle_data_status = self.handle_data(conn, data, addr, fds)
+
+                if handle_data_status == 1:
+                    logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
+                    data = bytes()
+                elif handle_data_status == 2:
+                    logging.info("Migration signal sent")
+                elif handle_data_status == 3:
+                    logging.info("Dumping happens")
+                elif handle_data_status == 4:
+                    logging.info("Restoration happens")
+
+
+            except OSError as ex:
+                logging.error(f"Exception {ex} with {str(ex)}")
+                break
             except Exception as ex:
                 logging.error(f"Exception {ex}")
-                continue_recv = False
+                break
+            
 
         # NOTE: Should that condition be here?
         # if (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
@@ -148,174 +315,182 @@ class ThreadedServer(object):
         #     logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
         #     migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #     migration_signal_sock.connect(("172.20.0.2", 80))
-        #     migration_signal_sock.send("threads_full".encode())
+        #     migration_signal_sock.send(f"threads_full${socket_id}$".encode())
 
         #     migration_signal_sock.close()
         #     self.migration_signal_sent = True
 
-        #     return
+        #     # NOTE: We do not return here since this action will close the socket as well 
+        #     # while we want it to be in ESTABLISHED state.
+        #     # return
                         
-        logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
-        try:
-            conn.sendall(data)
+        # logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
+        # try:
+        #     conn.sendall(data)
 
-            # Shall we try to close to avoid duplicate socket FDs?
-            # We also should update the list with the socket FDS that will be migrated?
-            fds.remove(conn.fileno())
+        #     data = bytes()
 
-            conn.close()            
-            
-            return
-        except OSError as ex:
-            logging.error(f"Exception {ex} with {str(ex)}")
-            return
+        #     # Shall we try to close to avoid duplicate socket FDs?
+        #     # We also should update the list with the socket FDS that will be migrated?
+        #     # fds.remove(conn.fileno())
+        #     # conn.close()
 
-    def listenToClient_mig(self, conn, addr, fds):
-        global migration_counter
+        #     # NOTE: We do not return here since this action will close the socket as well 
+        #     # while we want it to be in ESTABLISHED state.
+        #     # return
 
-        while True:
-            # logging.debug(f"Active Thread Count 2: {self.executor._work_queue.qsize()}")
-            logging.info(f"Connected by {addr}")
-            if addr[0] == "172.20.0.2":
-                logging.info("waiting to recv")
+        # except OSError as ex:
+        #     logging.error(f"Exception {ex} with {str(ex)}")
+        #     # return
 
-                # data = conn.recv(1024)
-                # if not data:
-                #     logging.warning("NO DATA RECV")
-                #     # break
-                #     continue
+    # def listenToClient_mig(self, conn, addr, fds):
+    #     # global migration_counter
 
-                data = bytes()
-                continue_recv = True
+    #     while True:
+    #         # logging.debug(f"Active Thread Count 2: {self.executor._work_queue.qsize()}")
+    #         logging.info(f"Connected by {addr}")
+    #         if addr[0] == "172.20.0.2":
+    #             logging.info("waiting to recv")
 
-                while continue_recv:
-                    try:
-                        # Try to receive some data
-                        data_recv = conn.recv(16)
-                        data += data_recv
-                        logging.debug(f"{threading.current_thread().name} Data so far.. {data} with len {len(data)}")
-                        if not data_recv:
-                            logging.warning("NO DATA RECV")
-                            continue_recv = False
-                        if data.find(b"\r\n\r\n") != -1 :
-                            continue_recv = False                        
-                    except Exception as ex:
-                        logging.error(f"Exception {ex}")
-                        continue_recv = False
+    #             # data = conn.recv(1024)
+    #             # if not data:
+    #             #     logging.warning("NO DATA RECV")
+    #             #     # break
+    #             #     continue
 
-                # if addr[1] == (50630 + migration_counter):
-                if (data.find("mig_signal_2".encode()) != -1):
-                    try:
-                        # self.lock.acquire()
+    #             data = bytes()                
 
-                        conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
+    #             while True:
+    #                 try:
+    #                     # Try to receive some data
+    #                     data_recv = conn.recv(16)
+    #                     data += data_recv
+    #                     # logging.debug(f"{threading.current_thread().name} Data so far.. {data} with len {len(data)}")
+    #                     if not data_recv:
+    #                         logging.warning("NO DATA RECV")
+    #                         break
+    #                     # if data.find(b"\r\n\r\n") != -1 :
+    #                     if data.find(b"\n") != -1 :
+    #                         break                   
+    #                 except Exception as ex:
+    #                     logging.error(f"Exception {ex}")
+    #                     break
+
+    #             # if addr[1] == (50630 + migration_counter):
+    #             if (data.find("mig_signal_2".encode()) != -1):
+    #                 try:
+    #                     # self.lock.acquire()
+
+    #                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
                         
-                        logging.debug("Restoring...")
+    #                     logging.debug("Restoring...")
 
-                        inq = None
-                        with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
-                            inq = inq_file.read()
+    #                     inq = None
+    #                     with open("/migvolume1/dump_inq.dat", mode="rb") as inq_file:
+    #                         inq = inq_file.read()
                         
-                        if inq == None:
-                            logging.debug("INQ NONE")
+    #                     if inq == None:
+    #                         logging.debug("INQ NONE")
 
-                        if inq == b'':
-                            logging.warning("INQ empty, correcting...")
-                            inq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
+    #                     if inq == b'':
+    #                         logging.warning("INQ empty, correcting...")
+    #                         inq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
 
-                        logging.debug(inq)
+    #                     logging.debug(inq)
 
-                        outq = None
-                        with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
-                            outq = outq_file.read()
+    #                     outq = None
+    #                     with open("/migvolume1/dump_outq.dat", mode="rb") as outq_file:
+    #                         outq = outq_file.read()
 
-                        if outq == None:
-                            logging.debug("OUTQ NONE")
+    #                     if outq == None:
+    #                         logging.debug("OUTQ NONE")
 
-                        if outq == b'':
-                            logging.warning("OUTQ empty, correcting...")
-                            outq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
+    #                     if outq == b'':
+    #                         logging.warning("OUTQ empty, correcting...")
+    #                         outq = b"\x00\x00\x00\x00\x00\x00\x00\x00"
 
-                        logging.debug(outq)
+    #                     logging.debug(outq)
 
-                        # print(f"New SEQ num: {conn.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)}")
+    #                     # print(f"New SEQ num: {conn.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE)}")
 
-                        # conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #                     # conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-                        conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, outq)
+    #                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, outq)
                 
-                        conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, inq)
+    #                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR_QUEUE, inq)
                 
 
-                        # Let's proceed with sending the new data
-                        conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 0)
+    #                     # Let's proceed with sending the new data
+    #                     conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 0)
 
-                        migration_counter += 1
+    #                     migration_counter += 1
 
-                        # self.lock.release()
+    #                     # self.lock.release()
 
-                    except Exception as ex:
-                        # print("Could not use TCP_REPAIR mode")
-                        logging.error(f"Issue with Socket Restoration {ex}")
+    #                 except Exception as ex:
+    #                     # print("Could not use TCP_REPAIR mode")
+    #                     logging.error(f"Issue with Socket Restoration {ex}")
 
-                # TODO: These checks for the condition should be something different in the future
-                # can be something that comes from and IPC. 
-                if (addr[0] == "172.20.0.2") and (data.find("migration".encode()) != -1):
-                    # client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                    # client_unix.connect("/tmp/test")
+    #             # TODO: These checks for the condition should be something different in the future
+    #             # can be something that comes from and IPC. 
+    #             if (addr[0] == "172.20.0.2") and (data.find("migration".encode()) != -1):
+    #                 # client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    #                 # client_unix.connect("/tmp/test")
 
-                    # print(f"FD No: {conn.fileno()}")
+    #                 print(f"Current FD No: {conn.fileno()}")
 
-                    # HERE we should dump all the sockets in a loop
+    #                 time.sleep(10)
 
-                    self.lock.acquire()
+    #                 self.lock.acquire()
 
-                    for fd in fds:
-                        logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd}")
-                        client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
-                        client_unix.connect("/tmp/test")
-                        self.send_fds(client_unix, b"AAAAA", [fd])
-                        client_unix.close()
-                        # time.sleep(5)
+    #                 for fd in fds:
+    #                     logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd}")
+    #                     client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
+    #                     client_unix.connect("/tmp/test")
+    #                     self.send_fds(client_unix, b"AAAAA", [fd])
+    #                     client_unix.close()
+    #                     # time.sleep(5)
                     
-                    self.lock.release()
-                    logging.debug("Sent FDs")
+    #                 self.lock.release()
+    #                 logging.debug("Sent FDs")
 
-                    # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
+    #                 # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
 
-                    # NOTE: here also we need to have dynamically the server that the files
-                    # will be sent to.
-                    #cmd_list = ["sshpass", "-p", "123456", "scp",
-                    #            "-o", "StrictHostKeyChecking=no", 
-                    #            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
-                    #            "root@172.20.0.4:/root/single"]                    
+    #                 # NOTE: here also we need to have dynamically the server that the files
+    #                 # will be sent to.
+    #                 #cmd_list = ["sshpass", "-p", "123456", "scp",
+    #                 #            "-o", "StrictHostKeyChecking=no", 
+    #                 #            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
+    #                 #            "root@172.20.0.4:/root/single"]                    
 
-                    #subprocess.call(cmd_list)
-                    logging.info("Copied dumped files...")
-                    # print(f"FD No after: {conn.fileno()}")
+    #                 #subprocess.call(cmd_list)
+    #                 logging.info("Copied dumped files...")
+    #                 # print(f"FD No after: {conn.fileno()}")
 
-                    # TODO: maybe need to wait here for a bit?
+    #                 # TODO: maybe need to wait here for a bit?
 
-                    # mig_data = "migrated"
-                    # os.write(client.fileno(), mig_data.encode())
+    #                 # mig_data = "migrated"
+    #                 # os.write(client.fileno(), mig_data.encode())
                 
-                logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
-                try:
-                    # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
-                    conn.sendall(data)
-                    return
+    #             logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
+    #             try:
+    #                 # print(f"SD OK: {(fcntl.fcntl(conn.fileno(), fcntl.F_GETFD) != -1)}")
+    #                 conn.sendall(data)
+    #                 data = bytes()
+    #                 # return
 
-                except OSError as ex:
-                    logging.error(f"Exception {ex} with {str(ex)}")
+    #             except OSError as ex:
+    #                 logging.error(f"Exception {ex} with {str(ex)}")
 
-                    logging.warning("Trying one more time")
-                    conn.sendall(data)
-                    return
-                # conn.sendall(f"{data.decode()}_{migration_counter}".encode())
+    #                 logging.warning("Trying one more time")
+    #                 conn.sendall(data)
+    #                 data = bytes()
+    #                 # return
+    #             # conn.sendall(f"{data.decode()}_{migration_counter}".encode())
             
-            else:
-                conn.close()
-                return
+    #         else:
+    #             conn.close()
+    #             # return
 
 def main():
     threads = 4
