@@ -5,14 +5,10 @@ import nclib
 HOST = "172.20.0.2"
 PORT = 80
 
-logging.basicConfig(level=logging.DEBUG)
-
-def simple_socks_send():
+def simple_socks_send(data):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((HOST, PORT))
-    # print("sending 1st")
-    s.send("AAA\n".encode())
-    # print(s.recv(1024))
+    s.send(data.encode())
     data = bytes()
 
     while True:
@@ -33,14 +29,8 @@ def simple_socks_send():
             logging.debug(f"{threading.current_thread().name} Exception {ex}")
             break
 
-    time.sleep(5)
+    time.sleep(10)
 
-    # print("sending 2nd")
-
-    # s.send("$AAA$\n".encode())
-    # print(s.recv(1024))
-
-    # time.sleep(10)
 
 def netcat_send():
     echo_cmd_list = ["echo", "-n", "'AAA'"]
@@ -54,7 +44,7 @@ def netcat_send():
     nc_proc.communicate(input="AAA\n".encode())
     # nc_proc.stdin.close()
 
-    time.sleep(30)
+    time.sleep(10)
 
     # # Running it again
     # nc_proc.communicate(input="AAA\n".encode())
@@ -78,11 +68,16 @@ def nclib_send():
     # return
 
 def main():
-    for i in range(6):
+    max = 4
+    for i in range(max):
+
+        data = "AAA\n"
+        if i == max-1:
+            data = "BBB\n"
         
         # new_thread = threading.Thread(target = nclib_send, args = ())
         # new_thread = threading.Thread(target = netcat_send, args = ())
-        new_thread = threading.Thread(target = simple_socks_send, args = ())
+        new_thread = threading.Thread(target = simple_socks_send, args = (data,))
         new_thread.start()
 
     return

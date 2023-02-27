@@ -313,7 +313,9 @@ class LoadBalancer(object):
             socket_id = data.decode().split("$",2)[1]
             dumped_sockets_num = data.decode().split("@",2)[1]
 
-            next_server = round_robin(MIG_ITER)
+            # NOTE: we hardcode it for now
+            # next_server = round_robin(MIG_ITER)
+            next_server = ("172.20.0.4", 80)
             try:
                 # +1 is for the migration signal
                 for dumped_sock in range(int(dumped_sockets_num)+1):
@@ -392,8 +394,8 @@ class LoadBalancer(object):
             data = data.encode()
             
             # TODO: The follwing send or the one outside the if-else is probably redundant and can be removed
-            remote_socket.send(data)
             logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
+            remote_socket.send(data)
             
             return
 

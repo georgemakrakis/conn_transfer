@@ -132,7 +132,7 @@ char *concat_file_name(char *new_uuid, char *path, char *file_name)
 	size_t n = strlen(new_uuid) + strlen(path) + strlen(file_name) + 1 + 1;
 	char *final_file_name = malloc(n);
 
-	strcpy(final_file_name, path);			
+	strncpy(final_file_name, path, n);			
 	strcat(final_file_name, new_uuid);
 	strcat(final_file_name, "_");
 	strcat(final_file_name, file_name);
@@ -147,6 +147,8 @@ int main(int argc, char *argv[])
     struct libsoccr_sk *so, *so_rst;
     struct libsoccr_sk_data data = {};
     struct libsoccr_sk_data rst_data = {};
+
+	int thread_num = 1;
 
     char buffer[BUFFER_LENGTH], *queue;
 
@@ -224,7 +226,11 @@ int main(int argc, char *argv[])
 				return -1;
 			}
 
-			char *new_uuid = produce_uuid();
+			// The UUID is mostly meant to make the process more automated for many sockets
+			// char *new_uuid = produce_uuid();
+			// char *new_uuid = "";
+			char *new_uuid = malloc(2);
+			snprintf(new_uuid, 2, "%d", thread_num);
 			//printf("NEW UUID PRODUCED %s\n", new_uuid);
 
 			// TODO: save all the above to a file and read from it to restore the socket
@@ -234,7 +240,9 @@ int main(int argc, char *argv[])
 			char *file_name = "dump.dat";
 
 			char *final_file_name = concat_file_name(new_uuid, path, file_name);
-			printf("FINAL FILE NAME %s\n", final_file_name);
+			
+			
+			printf("Dumping %d with file name %s\n", fd_rec[i], final_file_name);
 
 			file = fopen (final_file_name, "w");
 			if (file == NULL)
@@ -257,7 +265,11 @@ int main(int argc, char *argv[])
             inq = libsoccr_get_queue_bytes(so, TCP_RECV_QUEUE, 0);
             outq = libsoccr_get_queue_bytes(so, TCP_SEND_QUEUE, 0);
 
-            file = fopen ("/migvolume1/dump_inq.dat", "w");
+			file_name = "dump_inq.dat";
+
+			final_file_name = concat_file_name(new_uuid, path, file_name);
+
+            file = fopen (final_file_name, "w");
 			if (file == NULL)
 			{
 				fprintf(stderr, "Error opening file\n");
@@ -272,7 +284,11 @@ int main(int argc, char *argv[])
 		 
 		 	fclose (file);
 
-            file = fopen ("/migvolume1/dump_outq.dat", "w");
+			file_name = "dump_outq.dat";
+
+			final_file_name = concat_file_name(new_uuid, path, file_name);
+
+            file = fopen (final_file_name, "w");
 			if (file == NULL)
 			{
 				fprintf(stderr, "Error opening file\n");
@@ -290,6 +306,10 @@ int main(int argc, char *argv[])
 			printf("Resuming...\n");
 			libsoccr_resume(so);
 
+			printf("Closing %d...\n", fd_rec[i]);
+			close(fd_rec[i]);
+
+			thread_num++;
 
 			//close(fd_rec[i]);			
 
@@ -367,7 +387,7 @@ int main(int argc, char *argv[])
 			//libsoccr_resume(so);
 			//printf("Resumed\n");
 		}
-        }
+	    }
 
         // close(connfd);
 		// printf("Closed UDS\n");

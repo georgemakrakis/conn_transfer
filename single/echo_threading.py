@@ -8,6 +8,16 @@ import concurrent.futures
 HOST = "172.20.0.3"
 PORT = 80
 
+import socket, array, time, os, logging
+import subprocess, fcntl, select
+import threading
+import uuid
+
+import concurrent.futures
+
+HOST = "172.20.0.3"
+PORT = 80
+
 TCP_REPAIR          = 19
 TCP_REPAIR_QUEUE    = 20
 
@@ -120,8 +130,8 @@ class ThreadedServer(object):
         # We lock the access to the global resource and to the if statement
         # so other threads will not be able to access it and send duplicate messages to the LB
         with self.lock:
-            # if (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
-            if (threading.active_count() > self.threads) and (not migration_signal_sent) and (data.find(b"\n") != -1): # Now we send the migration condition signal
+            # if (threading.active_count() > self.threads) and (not migration_signal_sent) and (data.find(b"\n") != -1): # Now we send the migration condition signal
+            if (data.find(b"BBB\n") != -1) and (not migration_signal_sent) and (data.find(b"\n") != -1): # Now we send the migration condition signal
                 try:
                     socket_id = data.decode().split("$",2)[1]
                 except IndexError as er:
@@ -225,6 +235,8 @@ class ThreadedServer(object):
             dumped_sockets_num = 0
 
             dumped_socket_ids = ""
+
+            migrated_sockets_fds = []
             
             # NOTE: Dump half of the sockets (say the first half)
             for index, fd in enumerate(fds):
@@ -236,6 +248,7 @@ class ThreadedServer(object):
                     client_unix.connect("/tmp/test")
                     self.send_fds(client_unix, b"AAAAA", [fd[1]])
                     client_unix.close()
+                    migrated_sockets_fds.append(fd)
                     dumped_sockets_num += 1
                     # time.sleep(5)
 
@@ -266,6 +279,11 @@ class ThreadedServer(object):
             data = f"{data}@{dumped_sockets_num}@\n".encode()
             logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
             conn.sendall(data)
+
+            # Remove the migrated connections.
+            for mig_fd in migrated_sockets_fds:
+                if mig_fd in fds:
+                    fds.remove(mig_fd)
             
             with self.lock:
                 migration_signal_sent = False
