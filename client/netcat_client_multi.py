@@ -68,17 +68,21 @@ def nclib_send():
     # return
 
 def main():
-    max = 4
-    for i in range(max):
+    runs = 3
+    for j in range(runs):
+        max_threads = 4
+        for i in range(max_threads):
 
-        data = "AAA\n"
-        if i == max-1:
-            data = "BBB\n"
-        
-        # new_thread = threading.Thread(target = nclib_send, args = ())
-        # new_thread = threading.Thread(target = netcat_send, args = ())
-        new_thread = threading.Thread(target = simple_socks_send, args = (data,))
-        new_thread.start()
+            data = "AAA\n"
+            if i == (max_threads - 1):
+                data = "BBB\n"
+            
+            # new_thread = threading.Thread(target = nclib_send, args = ())
+            # new_thread = threading.Thread(target = netcat_send, args = ())
+            new_thread = threading.Thread(target = simple_socks_send, args = (data,))
+            new_thread.start()
+
+        time.sleep(2)
 
     return
 
