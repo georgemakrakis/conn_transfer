@@ -75,7 +75,7 @@ def main():
 
             data = "AAA\n"
             if i == (max_threads - 1):
-                data = "BBB\n"
+                data = "BBB\n" # The condition that will trigger the migration
             
             # new_thread = threading.Thread(target = nclib_send, args = ())
             # new_thread = threading.Thread(target = netcat_send, args = ())
