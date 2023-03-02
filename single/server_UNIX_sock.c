@@ -236,7 +236,8 @@ int main(int argc, char *argv[])
 			// TODO: save all the above to a file and read from it to restore the socket
 			FILE *file;
 
-			char *path = "/migvolume1/";
+			// char *path = "/migvolume1/";
+			char *path = "/root/single/dumped_connections/";
 			char *file_name = "dump.dat";
 
 			char *final_file_name = concat_file_name(new_uuid, path, file_name);

@@ -5,7 +5,7 @@ import socket
 import select
 import random, uuid
 from itertools import cycle
-import threading
+import threading, multiprocessing
 
 import struct, array, time
 
@@ -39,12 +39,40 @@ IPs = ["172.20.0.4", "172.20.0.3", "172.20.0.7"]
 logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
+# How many containers have been spawned eventually. We start from one, and the should be an even number.
+SPAWNED_CONTAINERS = 1
+
 
 ITER = cycle(SERVER_POOL)
 MIG_ITER = cycle(MIG_SERVER_POOL) # This one is slided one step to the right as above
 def round_robin(iter):
     # round_robin([A, B, C, D]) --> A B C D A B C D A B C D ...
     return next(iter)
+
+def launch_containers(new_container):
+
+    container_name = f"server_{new_container+1}"
+    IP_third_octet = 3 + new_container
+
+    # The commands to start the creation of a new container
+
+    docker_run_cmd_list = ["docker", "run", "-it", "-d", "--privileged",
+            "--net", "migrate-net",  "--ip", f"172.20.0.{IP_third_octet}",
+            "-v", "socket_migration_volume:/migvolume1", "--name", container_name, 
+            "--hostname", container_name, "server"]
+    # subprocess.call(args=docker_run_cmd_list, stdin="/dev/null", stdout="/dev/null", stderr="/dev/null", shell=False)
+    subprocess.call(args=docker_run_cmd_list)
+
+    # docker_exec_list = ["docker", "exec", "server_2", "service", "ssh", "start"]
+    # subprocess.call(docker_exec_list)
+
+    # docker_exec_list = ["docker", "exec", "server_2", "bash", "-c", "'/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'"]
+    docker_exec_list_2 = ["docker", "exec", container_name, "/bin/bash", "/root/run_server.sh", f"172.20.0.{IP_third_octet}"]
+    subprocess.call(args=docker_exec_list_2)
+
+    # TODO: Here we should also launch the C program that dumps the sockets.
+
+    return 1
 
 class LoadBalancer(object):
     """ Socket implementation of a load balancer.
@@ -213,6 +241,8 @@ class LoadBalancer(object):
         global MIG_SERVER_POOL
         global MIG_PORTS
 
+        global SPAWNED_CONTAINERS
+
         socket_id = None
 
         new_sock = None
@@ -250,26 +280,39 @@ class LoadBalancer(object):
         
         # if sock.getpeername()[0] == "172.20.0.5":
         if (data.find("threads_full".encode()) != -1):
+            
+            # ==============================SPAWNING NEW CONTAINERS====================
+            # Initially we have 1 container only
+            # if SPAWNED_CONTAINERS == 1:
+            #     SPAWNED_CONTAINERS = 2
+            # elif (SPAWNED_CONTAINERS % 2) == 0:
+            #     SPAWNED_CONTAINERS *= 2
 
-            # The commands to start the creation of a new container
+            # timeStarted = time.time()
+            
+            # results = []
+            # new_containers = range(1, SPAWNED_CONTAINERS+1)
+            # # for new_container in range(1, SPAWNED_CONTAINERS+1):
+                
+            #     # new_spawn_thread = threading.Thread(target = self.launch_containers, args = (new_container,))
+            #     # # checkpoint_threads.append(new_checkpoint_thread)
+            #     # new_spawn_thread.start()
+            #     # new_spawn_thread.join()
+            #     # TODO: Here we should also launch the C program that dumps the sockets.
 
-            docker_run_cmd_list = ["docker", "run", "-it", "-d", "--privileged",
-                       "--net", "migrate-net",  "--ip", "172.20.0.4",
-                       "-v", "socket_migration_volume:/migvolume1", "--name", "server_2", 
-                       "--hostname", "server_2", "server"]
-            # subprocess.call(args=docker_run_cmd_list, stdin="/dev/null", stdout="/dev/null", stderr="/dev/null", shell=False)
-            subprocess.call(args=docker_run_cmd_list)
+            # try:
+            #     pool = multiprocessing.Pool()
+            #     outputs_async = pool.map_async(launch_containers, new_containers)
+            #     results = outputs_async.get()
+            # except Exception as e:
+            #     logging.error(f"POOL: {e}")
 
-            # docker_exec_list = ["docker", "exec", "server_2", "service", "ssh", "start"]
-            # subprocess.call(docker_exec_list)
+            # if (all(result == 1 for result in results)):
+            #     timeDelta = time.time() - timeStarted
 
-            # docker_exec_list = ["docker", "exec", "server_2", "bash", "-c", "'/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'"]
-            docker_exec_list_2 = ["docker", "exec", "server_2", "/bin/bash", "/root/run_server.sh"]
-            subprocess.call(docker_exec_list_2)
+            #     logging.info(f"{threading.current_thread().name} TIME TO RUN CONTAINERS {timeDelta}")
 
-
-            # docker run -it --privileged --net migrate-net --ip 172.20.0.4 -d -v socket_migration_volume:/migvolume1 --name server_2 --hostname server_2 server && docker exec server_2 service ssh start && docker exec server_2 bash -c '/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'
-            return
+            # return
              
             socket_id = data.decode().split("$",2)[1]
 
@@ -488,6 +531,30 @@ class LoadBalancer(object):
 
         return
 
+    # def launch_containers(self, new_container):
+
+    #     container_name = f"server_{new_container+1}"
+    #     IP_third_octet = 3 + new_container
+
+    #     # The commands to start the creation of a new container
+
+    #     docker_run_cmd_list = ["docker", "run", "-it", "-d", "--privileged",
+    #             "--net", "migrate-net",  "--ip", f"172.20.0.{IP_third_octet}",
+    #             "-v", "socket_migration_volume:/migvolume1", "--name", container_name, 
+    #             "--hostname", container_name, "server"]
+    #     # subprocess.call(args=docker_run_cmd_list, stdin="/dev/null", stdout="/dev/null", stderr="/dev/null", shell=False)
+    #     subprocess.call(args=docker_run_cmd_list)
+
+    #     # docker_exec_list = ["docker", "exec", "server_2", "service", "ssh", "start"]
+    #     # subprocess.call(docker_exec_list)
+
+    #     # docker_exec_list = ["docker", "exec", "server_2", "bash", "-c", "'/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'"]
+    #     docker_exec_list_2 = ["docker", "exec", container_name, "/bin/bash", "/root/run_server.sh", f"172.20.0.{IP_third_octet}"]
+    #     subprocess.call(args=docker_exec_list_2)
+
+    #     # TODO: Here we should also launch the C program that dumps the sockets.
+
+    #     return
 
 if __name__ == '__main__':
     try:

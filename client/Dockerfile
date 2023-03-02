@@ -26,4 +26,6 @@ COPY client/client1.py /root/client1.py
 COPY client/slowloris/slowloris.py /root/slowloris.py
 COPY client/client1_threading.py /root/client1_threading.py
 
+COPY client/netcat_client_multi.py /root/netcat_client_multi.py
+
 # EXPOSE 8080

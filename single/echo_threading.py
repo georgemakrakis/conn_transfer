@@ -193,8 +193,11 @@ class ThreadedServer(object):
                 
                 logging.debug("Restoring...")
 
+                # path = "/migvolume1/"
+                path = "/root/single/dumped_connections/"
+
                 inq = None
-                with open(f"/migvolume1/{dumped_socket_num}_dump_inq.dat", mode="rb") as inq_file:
+                with open(f"{path}{dumped_socket_num}_dump_inq.dat", mode="rb") as inq_file:
                     inq = inq_file.read()
                 
                 if inq == None:
@@ -207,7 +210,7 @@ class ThreadedServer(object):
                 logging.debug(inq)
 
                 outq = None
-                with open(f"/migvolume1/{dumped_socket_num}_dump_outq.dat", mode="rb") as outq_file:
+                with open(f"{path}{dumped_socket_num}_dump_outq.dat", mode="rb") as outq_file:
                     outq = outq_file.read()
 
                 if outq == None:
@@ -314,14 +317,16 @@ class ThreadedServer(object):
 
             # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
 
-            # NOTE: here also we need to have dynamically the server that the files
+            # TODO: here also we need to have DYNAMICALLY the server IP that the files
             # will be sent to.
-            #cmd_list = ["sshpass", "-p", "123456", "scp",
-            #            "-o", "StrictHostKeyChecking=no", 
-            #            "dump.dat", "dump_inq.dat", "dump_outq.dat", 
-            #            "root@172.20.0.4:/root/single"]                    
+            scp_cmd_list = ["sshpass", "-p", "123456", "scp",
+                       "-o", "StrictHostKeyChecking=no",
+                        "-r", "/root/single/dumped_connections",
+                       "root@172.20.0.4:/root/single"]
 
-            #subprocess.call(cmd_list)
+            rsync_cmd_list = ["/bin/bash","/root/single/rsync.sh", "172.20.0.4"]
+
+            subprocess.call(rsync_cmd_list)
             logging.info("Copied dumped files...")
             # print(f"FD No after: {conn.fileno()}")
 
@@ -344,7 +349,7 @@ class ThreadedServer(object):
             timeDelta = time.time() - timeStarted
 
             metrics_logger_checkpoint = setup_logger('metrics_logger_checkpoint', 'metrics_logfile.log')
-            metrics_logger_checkpoint.info(f'Checkpoint time for {len(migrated_sockets_fds)} connections (serially): {timeDelta}')
+            metrics_logger_checkpoint.info(f'Checkpoint time for {len(migrated_sockets_fds)} connections (parallel): {timeDelta}')
 
             return 3
 

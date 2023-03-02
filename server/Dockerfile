@@ -10,7 +10,7 @@ RUN apt install software-properties-common -y
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt update
-RUN apt install curl nano make wget ssh netcat lynx iproute2 net-tools iptables sshpass python3.6 python3-pip python3.6-distutils libnl-3-dev libnet-dev libuuid1 uuid-dev -y
+RUN apt install curl nano make wget ssh rsync netcat lynx iproute2 net-tools iptables sshpass python3.6 python3-pip python3.6-distutils libnl-3-dev libnet-dev libuuid1 uuid-dev -y
 RUN apt update
 
 # To dump the whole process
@@ -63,10 +63,14 @@ RUN mkdir /root/img-dir
 COPY server/transparency_cmds_server.sh /root/transparency_cmds_server.sh
 COPY server/run_server.sh /root/run_server.sh
 
+COPY server/rsync.sh /root/rsync.sh
+
 
 # Individual socket migration folder
 RUN mkdir /root/single
 ADD single /root/single
+
+RUN mkdir /root/single/dumped_connections
 
 # gunicorn server folder
 RUN mkdir /root/single/simple_server_flask_gunicorn
