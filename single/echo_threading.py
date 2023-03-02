@@ -1,4 +1,5 @@
 import argparse
+import multiprocessing
 import random
 import socket, array, time, os, logging
 import subprocess, fcntl, select
@@ -26,6 +27,7 @@ TCP_REPAIR_QUEUE    = 20
 migration_counter = 0
 
 logging.basicConfig(filename='server.log', filemode='w', level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
 # migration_signal_sent = threading.local()
@@ -42,27 +44,49 @@ def setup_logger(name, log_file, level=logging.INFO):
 
     return logger
 
+# def connection_checkpoint(self, fd, results):
+def connection_checkpoint(socket_id, fd):
+    try:   
+        # if fd[1] != conn.fileno(): # We do not want the current socket to be migrated.
+        logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd}")
+        client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
+        client_unix.connect("/tmp/test")
+        dummy_thread = ThreadedServer()
+        dummy_thread.send_fds(client_unix, b"AAAAA", [fd])
+        client_unix.close()
+        # Here we should return 1 if OK or -1 if not.
+
+        # results.append(1)
+        return 1
+    except Exception as e:
+        logging.error(f"Connection_Checkpoint {e}")
+        # results.append(-1)
+        return -1
+    # return
+
 class ThreadedServer(object):
-    def __init__(self, host, port, threads):
-        self.host = host
-        self.port = port
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((self.host, self.port))
 
-        # Say we can handle N-threads plus the main thread
-        self.threads = threads + 1
+    def __init__(self, host=None, port=None, threads=None):
+        if host and port and threads:
+            self.host = host
+            self.port = port
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind((self.host, self.port))
 
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
+            # Say we can handle N-threads plus the main thread
+            self.threads = threads + 1
 
-        self.lock = threading.Lock()
+            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=threads)
 
-        self.fds = threading.local() 
+            self.lock = threading.Lock()
 
-        self.last_fd = None
+            self.fds = threading.local() 
 
-        # self.migration_signal_sent = False
-        # self.migration_signal_sent = threading.local()
+            self.last_fd = None
+
+            # self.migration_signal_sent = False
+            # self.migration_signal_sent = threading.local()
 
     def recv_fds(self, sock, msglen, maxfds):
         fds = array.array("i")   # Array of ints
@@ -74,7 +98,10 @@ class ThreadedServer(object):
         return msg, list(fds)
 
     def send_fds(self, sock, msg, fds):
-        return sock.sendmsg([msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
+        try:
+            return sock.sendmsg([msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))])
+        except Exception as e:
+            logging.debug(f"SEND FDS: {e}")
 
     def listen(self):
         # self.sock.listen(100)
@@ -152,6 +179,8 @@ class ThreadedServer(object):
                     logging.error(er)
 
                 fds.append((socket_id, conn.fileno()))
+
+                conn.sendall(data)
 
                 # TODO: Do we need to pause all the other threads from execution? 
                 # Most probably we can't, see: https://stackoverflow.com/a/13399592/7189378
@@ -243,8 +272,6 @@ class ThreadedServer(object):
             # TODO: These checks for the condition should be something different in the future
             # can be something that comes from and IPC. 
         if (addr[0] == "172.20.0.2") and (data.find("migration".encode()) != -1) and (data.find(b"\n") != -1):
-            # client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            # client_unix.connect("/tmp/test")
 
             # print(f"Current FD No: {conn.fileno()}")
 
@@ -257,7 +284,7 @@ class ThreadedServer(object):
 
             # time.sleep(10)
 
-            self.lock.acquire()
+            # self.lock.acquire()
             dumped_sockets_num = 0
 
             dumped_socket_ids = ""
@@ -265,31 +292,53 @@ class ThreadedServer(object):
             # NOTE: Dump a random half of the sockets
             # migrated_sockets_fds = random.sample(fds, round(len(fds)/2))
 
+            # Lists with first and second half of connections.
             migrated_sockets_fds = fds [0:round(len(fds)/2)]
-            # Create list2 with next half elements (next 3 elements)
             migrated_sockets_fds_2 = fds [round(len(fds)/2):len(fds)]
 
             # logging.debug(f"RANDOM SELECTION OF FDs: {migrated_sockets_fds}")
 
-            for index, fd in enumerate(migrated_sockets_fds):
-                # if index == round((len)(fds)/2):
-                #     break
-                # if fd[1] != conn.fileno(): # We do not want the current socket to be migrated.
-                logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd[1]}")
-                client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
-                client_unix.connect("/tmp/test")
-                self.send_fds(client_unix, b"AAAAA", [fd[1]])
-                client_unix.close()
-                # migrated_sockets_fds.append(fd)
-                dumped_sockets_num += 1
-                # time.sleep(5)
+            results = []
 
-                dumped_socket_ids += f"${fd[0]}$"
+            checkpoint_threads = []
+
+            # for index, fd in enumerate(migrated_sockets_fds):
+                
+            #     new_checkpoint_thread = threading.Thread(target = self.connection_checkpoint, args = (fd, results))
+            #     # checkpoint_threads.append(new_checkpoint_thread)
+            #     new_checkpoint_thread.start()
+                # new_checkpoint_thread.join()
+
+            try:
+                pool = multiprocessing.Pool()
+                outputs_async = pool.map_async(connection_checkpoint, migrated_sockets_fds)
+                results = outputs_async.get()
+            except Exception as e:
+                logging.error(f"POOL: {e}")
+                logging.error(f"POOL EXCEPTION: {type(migrated_sockets_fds)}")
+
+            # # Start all threads
+            # for t in checkpoint_threads:
+            #     t.start()
+
+            # Wait for all of them to finish
+            # for t in checkpoint_threads:
+            #     t.join()
+
+            if (all(result == 1 for result in results)):
+                dumped_sockets_num = len(migrated_sockets_fds)
+                dumped_socket_ids += "$"
+                dumped_socket_ids += "$$".join(map(lambda fd: fd[0], migrated_sockets_fds))
+                dumped_socket_ids += "$"
+            else:
+                logging.debug(f"{threading.current_thread().name} Not all sockets dumped, investigate")
+                exit(-1)
             
             # Add also the socket_id for the migration signal socket
             # dumped_socket_ids += f"${socket_id}$"
-            self.lock.release()
-            logging.debug("Sent FDs")
+
+            # self.lock.release()
+            logging.debug(f"{threading.current_thread().name} Sent FDs")
 
             # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
 
@@ -326,6 +375,7 @@ class ThreadedServer(object):
             metrics_logger_checkpoint.info(f'Checkpoint time for {len(migrated_sockets_fds)} connections (serially): {timeDelta}')
 
             return 3
+
         
 
         # if data.find(b"\r\n\r\n") != -1 :

@@ -317,8 +317,10 @@ class LoadBalancer(object):
             # next_server = round_robin(MIG_ITER)
             next_server = ("172.20.0.4", 80)
             try:
-                # +1 is for the migration signal
-                for dumped_sock in range(int(dumped_sockets_num)+1):
+                # +1 is for the migration signal. NOTE: Do we really need it?
+                # TODO: Can that loop happen in parallel?
+                # for dumped_sock in range(int(dumped_sockets_num)+1):
+                for dumped_sock in range(int(dumped_sockets_num)):
             
                     # self.migration_counter += 1
                     new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
