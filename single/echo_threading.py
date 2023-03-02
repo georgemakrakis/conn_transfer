@@ -44,26 +44,6 @@ def setup_logger(name, log_file, level=logging.INFO):
 
     return logger
 
-# def connection_checkpoint(self, fd, results):
-def connection_checkpoint(socket_id, fd):
-    try:   
-        # if fd[1] != conn.fileno(): # We do not want the current socket to be migrated.
-        logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd}")
-        client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
-        client_unix.connect("/tmp/test")
-        dummy_thread = ThreadedServer()
-        dummy_thread.send_fds(client_unix, b"AAAAA", [fd])
-        client_unix.close()
-        # Here we should return 1 if OK or -1 if not.
-
-        # results.append(1)
-        return 1
-    except Exception as e:
-        logging.error(f"Connection_Checkpoint {e}")
-        # results.append(-1)
-        return -1
-    # return
-
 class ThreadedServer(object):
 
     def __init__(self, host=None, port=None, threads=None):
@@ -302,28 +282,20 @@ class ThreadedServer(object):
 
             checkpoint_threads = []
 
-            # for index, fd in enumerate(migrated_sockets_fds):
+            for index, fd in enumerate(migrated_sockets_fds):
                 
-            #     new_checkpoint_thread = threading.Thread(target = self.connection_checkpoint, args = (fd, results))
-            #     # checkpoint_threads.append(new_checkpoint_thread)
-            #     new_checkpoint_thread.start()
+                new_checkpoint_thread = threading.Thread(target = self.connection_checkpoint, args = (fd, results))
+                # checkpoint_threads.append(new_checkpoint_thread)
+                new_checkpoint_thread.start()
                 # new_checkpoint_thread.join()
 
-            try:
-                pool = multiprocessing.Pool()
-                outputs_async = pool.map_async(connection_checkpoint, migrated_sockets_fds)
-                results = outputs_async.get()
-            except Exception as e:
-                logging.error(f"POOL: {e}")
-                logging.error(f"POOL EXCEPTION: {type(migrated_sockets_fds)}")
-
-            # # Start all threads
-            # for t in checkpoint_threads:
-            #     t.start()
-
-            # Wait for all of them to finish
-            # for t in checkpoint_threads:
-            #     t.join()
+            # try:
+            #     pool = multiprocessing.Pool()
+            #     outputs_async = pool.map_async(connection_checkpoint, migrated_sockets_fds)
+            #     results = outputs_async.get()
+            # except Exception as e:
+            #     logging.error(f"POOL: {e}")
+            #     logging.error(f"POOL EXCEPTION: {type(migrated_sockets_fds)}")
 
             if (all(result == 1 for result in results)):
                 dumped_sockets_num = len(migrated_sockets_fds)
@@ -391,6 +363,26 @@ class ThreadedServer(object):
             conn.sendall(data)
             return 1
 
+    def connection_checkpoint(self, fd, results):
+    # def connection_checkpoint(socket_id, fd):
+        try:   
+            # if fd[1] != conn.fileno(): # We do not want the current socket to be migrated.
+            logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd[1]}")
+            client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
+            client_unix.connect("/tmp/test")
+            # dummy_thread = ThreadedServer()
+            self.send_fds(client_unix, b"AAAAA", [fd[1]])
+            client_unix.close()
+            # Here we should return 1 if OK or -1 if not.
+
+            results.append(1)
+            # return 1
+        except Exception as e:
+            logging.error(f"Connection_Checkpoint {e}")
+            results.append(-1)
+            # return -1
+        
+        return
 
     def listenToClient(self, conn, addr, fds):
         # global migration_signal_sent

@@ -1,6 +1,6 @@
 # From: https://gist.github.com/zhouchangxun/5750b4636cc070ac01385d89946e0a7b
 
-import sys, logging, re
+import sys, logging, re, subprocess
 import socket
 import select
 import random, uuid
@@ -45,7 +45,6 @@ MIG_ITER = cycle(MIG_SERVER_POOL) # This one is slided one step to the right as 
 def round_robin(iter):
     # round_robin([A, B, C, D]) --> A B C D A B C D A B C D ...
     return next(iter)
-
 
 class LoadBalancer(object):
     """ Socket implementation of a load balancer.
@@ -251,6 +250,26 @@ class LoadBalancer(object):
         
         # if sock.getpeername()[0] == "172.20.0.5":
         if (data.find("threads_full".encode()) != -1):
+
+            # The commands to start the creation of a new container
+
+            docker_run_cmd_list = ["docker", "run", "-it", "-d", "--privileged",
+                       "--net", "migrate-net",  "--ip", "172.20.0.4",
+                       "-v", "socket_migration_volume:/migvolume1", "--name", "server_2", 
+                       "--hostname", "server_2", "server"]
+            # subprocess.call(args=docker_run_cmd_list, stdin="/dev/null", stdout="/dev/null", stderr="/dev/null", shell=False)
+            subprocess.call(args=docker_run_cmd_list)
+
+            # docker_exec_list = ["docker", "exec", "server_2", "service", "ssh", "start"]
+            # subprocess.call(docker_exec_list)
+
+            # docker_exec_list = ["docker", "exec", "server_2", "bash", "-c", "'/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'"]
+            docker_exec_list_2 = ["docker", "exec", "server_2", "/bin/bash", "/root/run_server.sh"]
+            subprocess.call(docker_exec_list_2)
+
+
+            # docker run -it --privileged --net migrate-net --ip 172.20.0.4 -d -v socket_migration_volume:/migvolume1 --name server_2 --hostname server_2 server && docker exec server_2 service ssh start && docker exec server_2 bash -c '/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'
+            return
              
             socket_id = data.decode().split("$",2)[1]
 
@@ -321,30 +340,9 @@ class LoadBalancer(object):
                 # TODO: Can that loop happen in parallel?
                 # for dumped_sock in range(int(dumped_sockets_num)+1):
                 for dumped_sock in range(int(dumped_sockets_num)):
-            
-                    # self.migration_counter += 1
-                    new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-                    # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
-                    new_sock.connect(next_server)
-
-                    logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
-
-                    self.sockets.append(new_sock)
-                    self.sockets.append(sock)
-
-                    self.flow_table[new_sock] = sock
-                    self.flow_table[sock] = new_sock
-
-                    # NOTE: This is a naive way to send a second signal to the entity that will retrieve
-                    # the migration data (can be anything, just make two distinct operations, dump/restore)
-                    # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
-                    mig_data = f"mig_signal_2${socket_ids[dumped_sock]}$@{dumped_sock+1}@\n".encode()
-
-                    # NOTE: We do not go to the if statements below here since we have to do that recursively for all the dumped sockets.
-                    remote_socket = new_sock
-                    remote_socket.send(f"{mig_data.decode()}".encode())
-                    logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
+                    new_restore_thread = threading.Thread(target = self.restore_signal, args = (sock, socket_ids, dumped_sock, next_server))
+                    # checkpoint_threads.append(new_checkpoint_thread)
+                    new_restore_thread.start()
 
                 return
             except ValueError as err:
@@ -462,6 +460,33 @@ class LoadBalancer(object):
             return round_robin(ITER)
         else:
             raise Exception('unknown algorithm: %s' % algorithm)
+
+    def restore_signal(self, sock, socket_ids, dumped_sock, next_server):
+        # self.migration_counter += 1
+        new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
+        new_sock.connect(next_server)
+
+        logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
+
+        self.sockets.append(new_sock)
+        self.sockets.append(sock)
+
+        self.flow_table[new_sock] = sock
+        self.flow_table[sock] = new_sock
+
+        # NOTE: This is a naive way to send a second signal to the entity that will retrieve
+        # the migration data (can be anything, just make two distinct operations, dump/restore)
+        # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
+        mig_data = f"mig_signal_2${socket_ids[dumped_sock]}$@{dumped_sock+1}@\n".encode()
+
+        # NOTE: We do not go to the if statements below here since we have to do that recursively for all the dumped sockets.
+        remote_socket = new_sock
+        remote_socket.send(f"{mig_data.decode()}".encode())
+        logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
+
+        return
 
 
 if __name__ == '__main__':

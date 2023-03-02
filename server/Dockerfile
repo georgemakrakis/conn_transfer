@@ -61,6 +61,7 @@ RUN mkdir /root/img-dir
 # NOTE: We have to revert some of these routes to connect to internet,
 # but the NGINX tutorial has a way to forward internet traffic through the proxy
 COPY server/transparency_cmds_server.sh /root/transparency_cmds_server.sh
+COPY server/run_server.sh /root/run_server.sh
 
 
 # Individual socket migration folder
