@@ -5,6 +5,9 @@ import nclib
 HOST = "172.20.0.2"
 PORT = 80
 
+logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.INFO)
+
 def simple_socks_send(data):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((HOST, PORT))

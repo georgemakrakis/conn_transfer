@@ -26,8 +26,8 @@ TCP_REPAIR_QUEUE    = 20
 
 migration_counter = 0
 
-logging.basicConfig(filename='server.log', filemode='w', level=logging.DEBUG)
-# logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(filename='server.log', filemode='w', level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
 # migration_signal_sent = threading.local()
@@ -258,7 +258,7 @@ class ThreadedServer(object):
 
             # print(f"Current FD No: {conn.fileno()}")
 
-            timeStarted = time.time()
+            # timeStarted = time.time()
 
             try:
                 socket_id = data.decode().split("$",2)[1]
@@ -270,27 +270,20 @@ class ThreadedServer(object):
             # self.lock.acquire()
             dumped_sockets_num = 0
 
-            dumped_socket_ids = ""
 
             # NOTE: Dump a random half of the sockets
             # migrated_sockets_fds = random.sample(fds, round(len(fds)/2))
 
             # Lists with first and second half of connections.
-            migrated_sockets_fds = fds [0:round(len(fds)/2)]
+            migrated_sockets_fds_1 = fds [0:round(len(fds)/2)]
             migrated_sockets_fds_2 = fds [round(len(fds)/2):len(fds)]
 
-            # logging.debug(f"RANDOM SELECTION OF FDs: {migrated_sockets_fds}")
+            logging.debug(f"HALF SELECTION OF FDs: {migrated_sockets_fds_1}")
+            logging.debug(f"OTHER HALF SELECTION OF FDs: {migrated_sockets_fds_2}")
 
             results = []
 
             checkpoint_threads = []
-
-            for index, fd in enumerate(migrated_sockets_fds):
-                
-                new_checkpoint_thread = threading.Thread(target = self.connection_checkpoint, args = (fd, results))
-                # checkpoint_threads.append(new_checkpoint_thread)
-                new_checkpoint_thread.start()
-                # new_checkpoint_thread.join()
 
             # try:
             #     pool = multiprocessing.Pool()
@@ -299,57 +292,77 @@ class ThreadedServer(object):
             # except Exception as e:
             #     logging.error(f"POOL: {e}")
             #     logging.error(f"POOL EXCEPTION: {type(migrated_sockets_fds)}")
-
-            if (all(result == 1 for result in results)):
-                dumped_sockets_num = len(migrated_sockets_fds)
-                dumped_socket_ids += "$"
-                dumped_socket_ids += "$$".join(map(lambda fd: fd[0], migrated_sockets_fds))
-                dumped_socket_ids += "$"
-            else:
-                logging.debug(f"{threading.current_thread().name} Not all sockets dumped, investigate")
-                exit(-1)
             
-            # Add also the socket_id for the migration signal socket
-            # dumped_socket_ids += f"${socket_id}$"
+            # both_halves = [migrated_sockets_fds_1, migrated_sockets_fds_2]
 
-            # self.lock.release()
-            logging.debug(f"{threading.current_thread().name} Sent FDs")
+            for migrated_sockets_fds in [migrated_sockets_fds_1, migrated_sockets_fds_2]:
+                timeStarted = time.time()
 
-            # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
+                dumped_socket_ids = ""
+                for fd in migrated_sockets_fds:
+                    
+                    new_checkpoint_thread = threading.Thread(target = self.connection_checkpoint, args = (fd, results))
+                    # checkpoint_threads.append(new_checkpoint_thread)
+                    new_checkpoint_thread.start()
+                    # new_checkpoint_thread.join()
 
-            # TODO: here also we need to have DYNAMICALLY the server IP that the files
-            # will be sent to.
-            scp_cmd_list = ["sshpass", "-p", "123456", "scp",
-                       "-o", "StrictHostKeyChecking=no",
-                        "-r", "/root/single/dumped_connections",
-                       "root@172.20.0.4:/root/single"]
+                
 
-            rsync_cmd_list = ["/bin/bash","/root/single/rsync.sh", "172.20.0.4"]
+                if (all(result == 1 for result in results)):
+                    dumped_sockets_num = len(migrated_sockets_fds)
+                    dumped_socket_ids += "$"
+                    dumped_socket_ids += "$$".join(map(lambda fd: fd[0], migrated_sockets_fds))
+                    dumped_socket_ids += "$"
+                else:
+                    logging.debug(f"{threading.current_thread().name} Not all sockets dumped, investigate")
+                    exit(-1)
+                
+                # Add also the socket_id for the migration signal socket
+                # dumped_socket_ids += f"${socket_id}$"
 
-            subprocess.call(rsync_cmd_list)
-            logging.info("Copied dumped files...")
-            # print(f"FD No after: {conn.fileno()}")
+                # self.lock.release()
+                logging.debug(f"{threading.current_thread().name} Sent FDs")
 
-            # TODO: What if we do not send data back but we just stop the from beeing sent
-            # by blocking them using IPTables? (maybe do not block ACK since we might have duplicate messages)
-            data = data.decode().replace("\n", "")
-            data = data.replace(f"${socket_id}$", dumped_socket_ids)
-            data = f"{data}@{dumped_sockets_num}@\n".encode()
-            logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
-            conn.sendall(data)
+                # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
 
-            # Remove the migrated connections.
-            for mig_fd in migrated_sockets_fds:
-                if mig_fd in fds:
-                    fds.remove(mig_fd)
+                # TODO: here also we need to have DYNAMICALLY the server IP that the files
+                # will be sent to.
+                scp_cmd_list = ["sshpass", "-p", "123456", "scp",
+                        "-o", "StrictHostKeyChecking=no",
+                            "-r", "/root/single/dumped_connections",
+                        "root@172.20.0.4:/root/single"]
+
+                rsync_cmd_list = ["/bin/bash","/root/single/rsync.sh", "172.20.0.4"]
+
+                # subprocess.call(rsync_cmd_list)
+
+                logging.info("Copied dumped files...")
+                # print(f"FD No after: {conn.fileno()}")
+
+                # TODO: What if we do not send data back but we just stop the from beeing sent
+                # by blocking them using IPTables? (maybe do not block ACK since we might have duplicate messages)
+                data = data.decode().replace("\n", "")
+                data = data.replace(f"${socket_id}$", dumped_socket_ids)
+                data = f"{data}@{dumped_sockets_num}@\n".encode()
+                logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
+                conn.sendall(data)
+
+                socket_id = dumped_socket_ids
+                socket_id.replace("$", "")
+
+                # Remove the migrated connections.
+                for mig_fd in migrated_sockets_fds:
+                    if mig_fd in fds:
+                        fds.remove(mig_fd)
+                
+
+                timeDelta = time.time() - timeStarted
+
+                metrics_logger_checkpoint = setup_logger('metrics_logger_checkpoint', 'metrics_logfile.log')
+                metrics_logger_checkpoint.info(f'Checkpoint time for {len(migrated_sockets_fds)} connections (parallel): {timeDelta}')
             
             with self.lock:
                 migration_signal_sent = False
-
-            timeDelta = time.time() - timeStarted
-
-            metrics_logger_checkpoint = setup_logger('metrics_logger_checkpoint', 'metrics_logfile.log')
-            metrics_logger_checkpoint.info(f'Checkpoint time for {len(migrated_sockets_fds)} connections (parallel): {timeDelta}')
 
             return 3
 

@@ -16,8 +16,8 @@ SERVER_POOL = [('172.20.0.3', 80)]
 # SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80)]
 # SERVER_POOL = [('172.20.0.3', 80), ('172.20.0.4',80), ('172.20.0.7', 80)]
 
-MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.3', 80)]
-# MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.7',80), ('172.20.0.3', 80)]
+# MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.3', 80)]
+MIG_SERVER_POOL = [('172.20.0.4', 80), ('172.20.0.5',80)]
 
 # These ports will be used to also identify messages that are meant for migration
 #  and not client forwarded data
@@ -53,6 +53,9 @@ def launch_containers(new_container):
 
     container_name = f"server_{new_container+1}"
     IP_third_octet = 3 + new_container
+
+    if IP_third_octet == 100:
+        return 1
 
     # The commands to start the creation of a new container
 
@@ -282,23 +285,27 @@ class LoadBalancer(object):
         if (data.find("threads_full".encode()) != -1):
             
             # ==============================SPAWNING NEW CONTAINERS====================
-            # Initially we have 1 container only
-            # if SPAWNED_CONTAINERS == 1:
+
+            
+            # if SPAWNED_CONTAINERS == 1: # Initially we have 1 container only
             #     SPAWNED_CONTAINERS = 2
-            # elif (SPAWNED_CONTAINERS % 2) == 0:
+            # elif (SPAWNED_CONTAINERS % 2) == 0: # then for each one container we are creating 2 more
             #     SPAWNED_CONTAINERS *= 2
 
-            # timeStarted = time.time()
+            # # SPAWNED_CONTAINERS = 49
+            # SPAWNED_CONTAINERS = 24
+
+            timeStarted = time.time()
             
-            # results = []
-            # new_containers = range(1, SPAWNED_CONTAINERS+1)
-            # # for new_container in range(1, SPAWNED_CONTAINERS+1):
+            results = []
+            new_containers = range(1, SPAWNED_CONTAINERS+1)
+
+            # for new_container in range(1, SPAWNED_CONTAINERS+1):
                 
-            #     # new_spawn_thread = threading.Thread(target = self.launch_containers, args = (new_container,))
-            #     # # checkpoint_threads.append(new_checkpoint_thread)
-            #     # new_spawn_thread.start()
+            #     new_spawn_thread = threading.Thread(target = self.launch_containers, args = (new_container,))
+            #     # checkpoint_threads.append(new_checkpoint_thread)
+            #     new_spawn_thread.start()
             #     # new_spawn_thread.join()
-            #     # TODO: Here we should also launch the C program that dumps the sockets.
 
             # try:
             #     pool = multiprocessing.Pool()
@@ -310,7 +317,8 @@ class LoadBalancer(object):
             # if (all(result == 1 for result in results)):
             #     timeDelta = time.time() - timeStarted
 
-            #     logging.info(f"{threading.current_thread().name} TIME TO RUN CONTAINERS {timeDelta}")
+            # # timeDelta = time.time() - timeStarted
+            # logging.info(f"{threading.current_thread().name} TIME TO RUN CONTAINERS {timeDelta}")
 
             # return
              
@@ -376,8 +384,8 @@ class LoadBalancer(object):
             dumped_sockets_num = data.decode().split("@",2)[1]
 
             # NOTE: we hardcode it for now
-            # next_server = round_robin(MIG_ITER)
-            next_server = ("172.20.0.4", 80)
+            next_server = round_robin(MIG_ITER)
+            # next_server = ("172.20.0.4", 80)
             try:
                 # +1 is for the migration signal. NOTE: Do we really need it?
                 # TODO: Can that loop happen in parallel?
@@ -532,6 +540,7 @@ class LoadBalancer(object):
         return
 
     # def launch_containers(self, new_container):
+    #     # timeStarted = time.time()
 
     #     container_name = f"server_{new_container+1}"
     #     IP_third_octet = 3 + new_container
@@ -544,6 +553,11 @@ class LoadBalancer(object):
     #             "--hostname", container_name, "server"]
     #     # subprocess.call(args=docker_run_cmd_list, stdin="/dev/null", stdout="/dev/null", stderr="/dev/null", shell=False)
     #     subprocess.call(args=docker_run_cmd_list)
+    #     # try:
+    #     #     subprocess.check_call(args=docker_run_cmd_list)
+    #     # except subprocess.CalledProcessError:
+            
+        
 
     #     # docker_exec_list = ["docker", "exec", "server_2", "service", "ssh", "start"]
     #     # subprocess.call(docker_exec_list)
@@ -553,7 +567,7 @@ class LoadBalancer(object):
     #     subprocess.call(args=docker_exec_list_2)
 
     #     # TODO: Here we should also launch the C program that dumps the sockets.
-
+    #     # logging.info(f"Container {new_container}: {time.time()-timeStarted}")
     #     return
 
 if __name__ == '__main__':
