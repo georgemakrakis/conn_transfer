@@ -151,7 +151,8 @@ class ThreadedServer(object):
         # so other threads will not be able to access it and send duplicate messages to the LB
         with self.lock:
             # if (threading.active_count() > self.threads) and (not migration_signal_sent) and (data.find(b"\n") != -1): # Now we send the migration condition signal
-            if (data.find(b"BBB\n") != -1) and (not migration_signal_sent) and (data.find(b"\n") != -1): # Now we send the migration condition signal
+            # if (data.find(b"BBB\n") != -1) and (not migration_signal_sent) and (data.find(b"\n") != -1): # Now we send the migration condition signal
+            if (data.find(b"BBB\n") != -1) and (data.find(b"\n") != -1): # Now we send the migration condition signal
                 
                 try:
                     socket_id = data.decode().split("$",2)[1]
@@ -160,6 +161,7 @@ class ThreadedServer(object):
 
                 fds.append((socket_id, conn.fileno()))
 
+                logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
                 conn.sendall(data)
 
                 # TODO: Do we need to pause all the other threads from execution? 
@@ -175,7 +177,7 @@ class ThreadedServer(object):
 
                 migration_signal_sock.close()
                 # self.migration_signal_sent = True
-                migration_signal_sent = True
+                # migration_signal_sent = True
 
                 # NOTE: We do not return here since this action will close the socket as well 
                 # while we want it to be in ESTABLISHED state.
@@ -294,11 +296,12 @@ class ThreadedServer(object):
             #     logging.error(f"POOL EXCEPTION: {type(migrated_sockets_fds)}")
             
             # both_halves = [migrated_sockets_fds_1, migrated_sockets_fds_2]
-
-            for migrated_sockets_fds in [migrated_sockets_fds_1, migrated_sockets_fds_2]:
+            old_dumped_sockets_num = ""
+            for index, migrated_sockets_fds in enumerate([migrated_sockets_fds_1, migrated_sockets_fds_2]):
                 timeStarted = time.time()
 
                 dumped_socket_ids = ""
+                
                 for fd in migrated_sockets_fds:
                     
                     new_checkpoint_thread = threading.Thread(target = self.connection_checkpoint, args = (fd, results))
@@ -342,13 +345,19 @@ class ThreadedServer(object):
                 # TODO: What if we do not send data back but we just stop the from beeing sent
                 # by blocking them using IPTables? (maybe do not block ACK since we might have duplicate messages)
                 data = data.decode().replace("\n", "")
-                data = data.replace(f"${socket_id}$", dumped_socket_ids)
+                if index == 0:
+                    data = data.replace(f"${socket_id}$", dumped_socket_ids)
+                else:
+                    data = data.replace(f"{socket_id}", dumped_socket_ids)
+                    data = data.replace(f"@{old_dumped_sockets_num}@", str(dumped_sockets_num))
+
                 data = f"{data}@{dumped_sockets_num}@\n".encode()
                 logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
                 conn.sendall(data)
 
                 socket_id = dumped_socket_ids
-                socket_id.replace("$", "")
+                old_dumped_sockets_num = dumped_sockets_num
+                # socket_id = socket_id.replace("$", "")
 
                 # Remove the migrated connections.
                 for mig_fd in migrated_sockets_fds:
@@ -361,8 +370,8 @@ class ThreadedServer(object):
                 metrics_logger_checkpoint = setup_logger('metrics_logger_checkpoint', 'metrics_logfile.log')
                 metrics_logger_checkpoint.info(f'Checkpoint time for {len(migrated_sockets_fds)} connections (parallel): {timeDelta}')
             
-            with self.lock:
-                migration_signal_sent = False
+            # with self.lock:
+            #     migration_signal_sent = False
 
             return 3
 

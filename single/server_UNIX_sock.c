@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
     struct libsoccr_sk_data data = {};
     struct libsoccr_sk_data rst_data = {};
 
-	int thread_num = 1;
+	// int thread_num = 1;
 
     char buffer[BUFFER_LENGTH], *queue;
 
@@ -229,9 +229,10 @@ int main(int argc, char *argv[])
 			// The UUID is mostly meant to make the process more automated for many sockets
 			// char *new_uuid = produce_uuid();
 			// char *new_uuid = "";
-			char *new_uuid = malloc(2);
-			snprintf(new_uuid, 2, "%d", thread_num);
-			//printf("NEW UUID PRODUCED %s\n", new_uuid);
+			char *new_uuid = malloc(200);
+			int thread_num = fd_rec[i] - 4;
+			snprintf(new_uuid, 200, "%d", thread_num);
+			// printf("NEW UUID PRODUCED %s\n", new_uuid);
 
 			// TODO: save all the above to a file and read from it to restore the socket
 			FILE *file;
@@ -310,7 +311,7 @@ int main(int argc, char *argv[])
 			printf("Closing %d...\n", fd_rec[i]);
 			close(fd_rec[i]);
 
-			thread_num++;
+			// thread_num++;
 
 			//close(fd_rec[i]);			
 

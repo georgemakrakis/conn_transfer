@@ -42,12 +42,22 @@ logging.basicConfig(level=logging.DEBUG)
 # How many containers have been spawned eventually. We start from one, and the should be an even number.
 SPAWNED_CONTAINERS = 1
 
-
 ITER = cycle(SERVER_POOL)
 MIG_ITER = cycle(MIG_SERVER_POOL) # This one is slided one step to the right as above
 def round_robin(iter):
     # round_robin([A, B, C, D]) --> A B C D A B C D A B C D ...
     return next(iter)
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """To setup as many loggers as you want"""
+
+    handler = logging.FileHandler(log_file)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
 
 def launch_containers(new_container):
 
@@ -386,14 +396,28 @@ class LoadBalancer(object):
             # NOTE: we hardcode it for now
             next_server = round_robin(MIG_ITER)
             # next_server = ("172.20.0.4", 80)
+
+            results = []
+
             try:
                 # +1 is for the migration signal. NOTE: Do we really need it?
                 # TODO: Can that loop happen in parallel?
                 # for dumped_sock in range(int(dumped_sockets_num)+1):
+                
+                timeStarted = time.time()
+
                 for dumped_sock in range(int(dumped_sockets_num)):
-                    new_restore_thread = threading.Thread(target = self.restore_signal, args = (sock, socket_ids, dumped_sock, next_server))
+                    new_restore_thread = threading.Thread(target = self.restore_signal, args = (sock, socket_ids, dumped_sock, next_server ,results))
                     # checkpoint_threads.append(new_checkpoint_thread)
                     new_restore_thread.start()
+
+                if (all(result == 1 for result in results)):
+                    timeDelta = time.time() - timeStarted
+                    metrics_logger_restore = setup_logger('metrics_logger_restore', 'metrics_restore_logfile.log')
+                    metrics_logger_restore.info(f'Restore time for {dumped_sockets_num} connection (parallel): {timeDelta}')
+                else:
+                    logging.debug(f"{threading.current_thread().name} Not all sockets dumped, investigate")
+                    exit(-1)
 
                 return
             except ValueError as err:
@@ -512,30 +536,36 @@ class LoadBalancer(object):
         else:
             raise Exception('unknown algorithm: %s' % algorithm)
 
-    def restore_signal(self, sock, socket_ids, dumped_sock, next_server):
-        # self.migration_counter += 1
-        new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def restore_signal(self, sock, socket_ids, dumped_sock, next_server, results):
+        try:
+            # self.migration_counter += 1
+            new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
-        new_sock.connect(next_server)
+            # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
+            new_sock.connect(next_server)
 
-        logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
+            logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
 
-        self.sockets.append(new_sock)
-        self.sockets.append(sock)
+            self.sockets.append(new_sock)
+            self.sockets.append(sock)
 
-        self.flow_table[new_sock] = sock
-        self.flow_table[sock] = new_sock
+            self.flow_table[new_sock] = sock
+            self.flow_table[sock] = new_sock
 
-        # NOTE: This is a naive way to send a second signal to the entity that will retrieve
-        # the migration data (can be anything, just make two distinct operations, dump/restore)
-        # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
-        mig_data = f"mig_signal_2${socket_ids[dumped_sock]}$@{dumped_sock+1}@\n".encode()
+            # NOTE: This is a naive way to send a second signal to the entity that will retrieve
+            # the migration data (can be anything, just make two distinct operations, dump/restore)
+            # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
+            mig_data = f"mig_signal_2${socket_ids[dumped_sock]}$@{dumped_sock+1}@\n".encode()
 
-        # NOTE: We do not go to the if statements below here since we have to do that recursively for all the dumped sockets.
-        remote_socket = new_sock
-        remote_socket.send(f"{mig_data.decode()}".encode())
-        logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
+            # NOTE: We do not go to the if statements below here since we have to do that recursively for all the dumped sockets.
+            remote_socket = new_sock
+            remote_socket.send(f"{mig_data.decode()}".encode())
+            logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
+
+            results.append(1)
+        except Exception as e:
+            logging.error(f"Connection_Restore {e}")
+            results.append(-1)
 
         return
 
