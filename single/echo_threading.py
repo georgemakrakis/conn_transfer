@@ -187,19 +187,27 @@ class ThreadedServer(object):
             try:
                 # self.lock.acquire()
 
+                try:
+                    socket_id = data.decode().split("$",2)[1]
+                except IndexError as er:
+                    logging.error(er)
+
+                fds.append((socket_id, conn.fileno()))
+                logging.debug(f"{threading.current_thread().name} ******************* FD No: {fds}")
+
                 timeStarted = time.time()
 
-                dumped_socket_num = (int)(data.decode().split("@",2)[1])
+                dumped_socket_pref = (int)(data.decode().split("@",2)[1])
 
                 conn.setsockopt(socket.SOL_TCP, TCP_REPAIR, 1)
                 
                 logging.debug("Restoring...")
 
-                # path = "/migvolume1/"
-                path = "/root/single/dumped_connections/"
+                path = "/migvolume1/"
+                # path = "/root/single/dumped_connections/"
 
                 inq = None
-                with open(f"{path}{dumped_socket_num}_dump_inq.dat", mode="rb") as inq_file:
+                with open(f"{path}{dumped_socket_pref}_dump_inq.dat", mode="rb") as inq_file:
                     inq = inq_file.read()
                 
                 if inq == None:
@@ -212,7 +220,7 @@ class ThreadedServer(object):
                 logging.debug(inq)
 
                 outq = None
-                with open(f"{path}{dumped_socket_num}_dump_outq.dat", mode="rb") as outq_file:
+                with open(f"{path}{dumped_socket_pref}_dump_outq.dat", mode="rb") as outq_file:
                     outq = outq_file.read()
 
                 if outq == None:
@@ -245,6 +253,11 @@ class ThreadedServer(object):
 
                 metrics_logger_restore = setup_logger('metrics_logger_restore', 'metrics_restore_logfile.log')
                 metrics_logger_restore.info(f'Restore time for {1} connection (parallel): {timeDelta}')
+
+                # Let's remove every file that we restored.
+                os.remove(f"{path}{dumped_socket_pref}_dump.dat")
+                os.remove(f"{path}{dumped_socket_pref}_dump_inq.dat")
+                os.remove(f"{path}{dumped_socket_pref}_dump_outq.dat")
 
                 return 4
 
@@ -307,18 +320,31 @@ class ThreadedServer(object):
                     new_checkpoint_thread = threading.Thread(target = self.connection_checkpoint, args = (fd, results))
                     # checkpoint_threads.append(new_checkpoint_thread)
                     new_checkpoint_thread.start()
-                    # new_checkpoint_thread.join()
+                    new_checkpoint_thread.join()
 
-                
-
+               
                 if (all(result == 1 for result in results)):
-                    dumped_sockets_num = len(migrated_sockets_fds)
+                    
+                    # dumped_socket_ids += "$"
+                    # for fd in migrated_sockets_fds:
+                    #     # The @ is used to identify the file of the dumped socket.
+                    #     # +1 because when FD is acessed it increases by one and
+                    #     # -4 to identify the socket.
+                    #     dumped_socket_ids += f"{fd[0]}$$@{fd[1] + 1 - 4}@"
+
+                    # dumped_socket_ids += "$"
+
                     dumped_socket_ids += "$"
                     dumped_socket_ids += "$$".join(map(lambda fd: fd[0], migrated_sockets_fds))
                     dumped_socket_ids += "$"
+
+                    dumped_socket_ids += "@"
+                    dumped_socket_ids += "@@".join(map(lambda fd: str(fd[1] + 1 - 4), migrated_sockets_fds))
+                    dumped_socket_ids += "@"
+
                 else:
                     logging.debug(f"{threading.current_thread().name} Not all sockets dumped, investigate")
-                    exit(-1)
+                    os._exit(-1)
                 
                 # Add also the socket_id for the migration signal socket
                 # dumped_socket_ids += f"${socket_id}$"
@@ -349,9 +375,10 @@ class ThreadedServer(object):
                     data = data.replace(f"${socket_id}$", dumped_socket_ids)
                 else:
                     data = data.replace(f"{socket_id}", dumped_socket_ids)
-                    data = data.replace(f"@{old_dumped_sockets_num}@", str(dumped_sockets_num))
+                    # data = data.replace(f"@{old_dumped_sockets_num}@", str(dumped_sockets_num))
 
-                data = f"{data}@{dumped_sockets_num}@\n".encode()
+                # data = f"{data}@{dumped_sockets_num}@\n".encode()
+                data = f"{data}\n".encode()
                 logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
                 conn.sendall(data)
 
@@ -400,9 +427,12 @@ class ThreadedServer(object):
             # dummy_thread = ThreadedServer()
             self.send_fds(client_unix, b"AAAAA", [fd[1]])
             client_unix.close()
-            # Here we should return 1 if OK or -1 if not.
+
+            to_close = socket.fromfd(fd[1]-1, socket.AF_INET, socket.SOCK_STREAM)
+            to_close.close()
 
             results.append(1)
+
             # return 1
         except Exception as e:
             logging.error(f"Connection_Checkpoint {e}")
@@ -449,6 +479,7 @@ class ThreadedServer(object):
                     logging.info("Migration signal sent")
                 elif handle_data_status == 3:
                     logging.info("Dumping happens")
+                    # os._exit(1)
                 elif handle_data_status == 4:
                     logging.info("Restoration happens")
 

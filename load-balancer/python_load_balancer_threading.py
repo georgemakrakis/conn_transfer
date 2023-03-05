@@ -1,6 +1,6 @@
 # From: https://gist.github.com/zhouchangxun/5750b4636cc070ac01385d89946e0a7b
 
-import sys, logging, re, subprocess
+import sys, logging, re, subprocess, os
 import socket
 import select
 import random, uuid
@@ -36,6 +36,7 @@ IPs = ["172.20.0.4", "172.20.0.3", "172.20.0.7"]
 # Should that be a list inside the class?
 # client_socket = None
 
+# logging.basicConfig(filename='server.log', filemode='w', level=logging.DEBUG)
 logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
@@ -44,6 +45,7 @@ SPAWNED_CONTAINERS = 1
 
 ITER = cycle(SERVER_POOL)
 MIG_ITER = cycle(MIG_SERVER_POOL) # This one is slided one step to the right as above
+
 def round_robin(iter):
     # round_robin([A, B, C, D]) --> A B C D A B C D A B C D ...
     return next(iter)
@@ -134,7 +136,7 @@ class LoadBalancer(object):
         self.cs_socket.bind((self.ip, self.port))
 
         logging.info(f"init client-side socket: {self.cs_socket.getsockname()}")
-        self.cs_socket.listen(10) # max connections
+        self.cs_socket.listen(1000) # max connections
         self.sockets.append(self.cs_socket)
 
         self.lock = threading.Lock()
@@ -167,7 +169,7 @@ class LoadBalancer(object):
                         # In Windows, sometimes when a TCP program closes abruptly,
                         # a "Connection reset by peer" exception will be thrown
                         data = sock.recv(4096) # buffer size: 2^n
-                        # data = sock.recv(16) # buffer size: 2^n
+                        # data = sock.recv(16)
                         if data:
                             if sock.getpeername()[0] not in IPs:
                                 # We add the UUID only to the clients, this wha we want to track.
@@ -182,20 +184,20 @@ class LoadBalancer(object):
                                 thread.start()
                                 # thread.join()
                         # else:
-                        #     # TODO: we might want to add the backend server connections
-                        #     # to the dict() as well
-                        #     if sock.getpeername()[0] not in IPs:
-                        #         thread = threading.Thread(target=self.on_close, args=(sock,))
-                        #         # self.clients_threads[sock] = thread
-                        #         thread.start()
-                        #         thread.join()
-                        #         break
-                        #         # self.on_close(sock)
-                        #         # break
+                            # # TODO: we might want to add the backend server connections
+                            # # to the dict() as well
+                            # if sock.getpeername()[0] not in IPs:
+                            #     thread = threading.Thread(target=self.on_close, args=(sock,))
+                            #     # self.clients_threads[sock] = thread
+                            #     thread.start()
+                            #     thread.join()
+                            #     break
+                            #     # self.on_close(sock)
+                            #     # break
 
-                        #     else:
-                        #         self.on_close(sock)
-                        #         break
+                            # else:
+                            #     self.on_close(sock)
+                            #     break
                     except ConnectionResetError as ex:
                         logging.error(f"ConnectionResetError {ex}")                        
                         # continue
@@ -223,6 +225,7 @@ class LoadBalancer(object):
         if client_addr[0] not in IPs:
             # init a server-side socket
             ss_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            ss_socket.settimeout(0.1)
             try:
                 ss_socket.connect((server_ip, server_port))
                 logging.info(f"{threading.current_thread().name} init server-side socket: {ss_socket.getsockname()}")
@@ -336,7 +339,7 @@ class LoadBalancer(object):
 
             # mig_data = f"migration${socket_id}$\r\n\r\n".encode()
             mig_data = f"migration${socket_id}$\n".encode()
-            logging.debug(f"{threading.current_thread().name} migration {self.migration_counter} is initiated...")
+            logging.debug(f"{threading.current_thread().name} migration counter is {self.migration_counter} ...")
             logging.debug(f"{threading.current_thread().name} client sock will be {sock.getsockname()} --> {sock.getpeername()}")
 
             if (sock.getpeername()[0], 80) in SERVER_POOL:
@@ -348,6 +351,7 @@ class LoadBalancer(object):
                 # sys.exit(1)
 
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            new_sock.settimeout(0.1)
             new_sock.bind(('172.20.0.2', new_port))
             new_sock.connect((sock.getpeername()[0], 80))
 
@@ -382,6 +386,7 @@ class LoadBalancer(object):
         # if (data.find("migration".encode()) != -1):
             
             logging.debug(f"{threading.current_thread().name} Here 1")
+            logging.debug(f"{threading.current_thread().name} migration counter is {self.migration_counter} ...")
 
             # Let's remove and close the connection with the 400* port
             # self.sockets.remove(sock)
@@ -389,9 +394,10 @@ class LoadBalancer(object):
             # del self.flow_table[sock]
 
             socket_ids = re.findall("\\$(.+?)\\$", data.decode())
+            dumped_file_pref = re.findall("\\@(.+?)\\@", data.decode())
 
-            socket_id = data.decode().split("$",2)[1]
-            dumped_sockets_num = data.decode().split("@",2)[1]
+            # socket_id = data.decode().split("$",2)[1]
+            dumped_sockets_num = len(socket_ids)
 
             # NOTE: we hardcode it for now
             next_server = round_robin(MIG_ITER)
@@ -406,18 +412,22 @@ class LoadBalancer(object):
                 
                 timeStarted = time.time()
 
-                for dumped_sock in range(int(dumped_sockets_num)):
-                    new_restore_thread = threading.Thread(target = self.restore_signal, args = (sock, socket_ids, dumped_sock, next_server ,results))
+                for dumped_sock_num in range(int(dumped_sockets_num)):
+
+                    new_restore_thread = threading.Thread(target = self.restore_signal, args = (sock, socket_ids, dumped_file_pref,  dumped_sock_num, next_server ,results))
                     # checkpoint_threads.append(new_checkpoint_thread)
                     new_restore_thread.start()
+                    new_restore_thread.join()
 
                 if (all(result == 1 for result in results)):
                     timeDelta = time.time() - timeStarted
                     metrics_logger_restore = setup_logger('metrics_logger_restore', 'metrics_restore_logfile.log')
                     metrics_logger_restore.info(f'Restore time for {dumped_sockets_num} connection (parallel): {timeDelta}')
+
+                    # self.migration_counter += 1
                 else:
                     logging.debug(f"{threading.current_thread().name} Not all sockets dumped, investigate")
-                    exit(-1)
+                    os._exit(-1)
 
                 return
             except ValueError as err:
@@ -433,26 +443,33 @@ class LoadBalancer(object):
         # # elif (data.find("mig_signal_2".encode()) != -1):
         #     logging.debug(f"{threading.current_thread().name} Here 2")
 
+        #     # NOTE Not sure if this one should be here.
         #     self.migration_counter += 1
 
-        #     socket_id = data.decode().split("$",2)[1]            
+        #     socket_id = data.decode().split("$",2)[1]
 
         #     new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            
+        #     new_sock.settimeout(0.1)
         #     new_sock.connect((sock.getpeername()[0], 80))
+
+        #     self.sockets.append(new_sock)
+        #     self.sockets.append(sock)
+
+        #     self.flow_table[new_sock] = sock
+        #     self.flow_table[sock] = new_sock
+
+        #     remote_socket = new_sock
 
         #     logging.debug(f"{threading.current_thread().name} New 2 {new_sock.getsockname()} with {new_sock.getpeername()}")
 
-        #     # NOTE: Correct data will be "migration" but "Ended" is for testing with 2 servers
-        #     # and 1 migration.
-        #     # NOTE: But if we send migration again, another socket dump will happen.
         #     # TODO: Need to find a way that both N migrations can happen but also send correct
         #     # messages and do not stuck in a loop (more checks and send outside the if statments?)
             
-        #     mig_data = f"migration:{socket_id}:\r\n\r\n".encode()
+        #     mig_data = f"migration_ZZZ${socket_id}$\n".encode()
 
         # TODO: Maybe here we should check for the mig_signal_2 as well? (or just for that?)
         if (self.migration_counter == self.MIGRATION_TIMES) and (data.find("$".encode()) != -1):
+        # if (self.migration_counter == self.MIGRATION_TIMES) and (data.find("$".encode()) != -1) and (data.find("mig_signal_2".encode()) != -1):
             self.migration_counter = 0
 
             logging.debug(f"{threading.current_thread().name} Here 3")       
@@ -494,7 +511,7 @@ class LoadBalancer(object):
             logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {data}")
         else:
             if mig_data != None:
-                remote_socket.send(f"{mig_data.decode()}".encode())
+                remote_socket.send(mig_data)
                 logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
             else:
                 remote_socket.send(f"${socket_id}${data.decode()}".encode())
@@ -536,14 +553,15 @@ class LoadBalancer(object):
         else:
             raise Exception('unknown algorithm: %s' % algorithm)
 
-    def restore_signal(self, sock, socket_ids, dumped_sock, next_server, results):
+    def restore_signal(self, sock, socket_ids, dumped_file_pref, dumped_sock, next_server, results):
         try:
             # self.migration_counter += 1
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
             # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
+            new_sock.settimeout(0.1)
             new_sock.connect(next_server)
-
+            
             logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
 
             self.sockets.append(new_sock)
@@ -555,7 +573,7 @@ class LoadBalancer(object):
             # NOTE: This is a naive way to send a second signal to the entity that will retrieve
             # the migration data (can be anything, just make two distinct operations, dump/restore)
             # mig_data = f"mig_signal_2${socket_id}$\r\n\r\n".encode()
-            mig_data = f"mig_signal_2${socket_ids[dumped_sock]}$@{dumped_sock+1}@\n".encode()
+            mig_data = f"mig_signal_2${socket_ids[dumped_sock]}$@{dumped_file_pref[dumped_sock]}@\n".encode()
 
             # NOTE: We do not go to the if statements below here since we have to do that recursively for all the dumped sockets.
             remote_socket = new_sock
