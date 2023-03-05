@@ -26,12 +26,14 @@ TCP_REPAIR_QUEUE    = 20
 
 migration_counter = 0
 
-# logging.basicConfig(filename='server.log', filemode='w', level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(filename='server.log', filemode='w', level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
 # migration_signal_sent = threading.local()
 migration_signal_sent = False
+
+logs_path = ""
 
 def setup_logger(name, log_file, level=logging.INFO):
     """To setup as many loggers as you want"""
@@ -251,7 +253,7 @@ class ThreadedServer(object):
 
                 timeDelta = time.time() - timeStarted
 
-                metrics_logger_restore = setup_logger('metrics_logger_restore', 'metrics_restore_logfile.log')
+                metrics_logger_restore = setup_logger('metrics_logger_restore', logs_path)
                 metrics_logger_restore.info(f'Restore time for {1} connection (parallel): {timeDelta}')
 
                 # Let's remove every file that we restored.
@@ -292,6 +294,9 @@ class ThreadedServer(object):
             # Lists with first and second half of connections.
             migrated_sockets_fds_1 = fds [0:round(len(fds)/2)]
             migrated_sockets_fds_2 = fds [round(len(fds)/2):len(fds)]
+
+            # migrated_sockets_fds_1.sort(key = lambda fd: fd[1])
+            # migrated_sockets_fds_2.sort(key = lambda fd: fd[1])
 
             logging.debug(f"HALF SELECTION OF FDs: {migrated_sockets_fds_1}")
             logging.debug(f"OTHER HALF SELECTION OF FDs: {migrated_sockets_fds_2}")
@@ -338,9 +343,18 @@ class ThreadedServer(object):
                     dumped_socket_ids += "$$".join(map(lambda fd: fd[0], migrated_sockets_fds))
                     dumped_socket_ids += "$"
 
+                    # entries = os.scandir("/migvolume1/")
+                    # prefixes = []
+                    # for entry in entries:
+                    #     pref = (entry.name.split('_')[0])
+                    #     if pref not in prefixes:
+                    #         prefixes.append(pref)
+
                     dumped_socket_ids += "@"
                     dumped_socket_ids += "@@".join(map(lambda fd: str(fd[1] + 1 - 4), migrated_sockets_fds))
+                    # dumped_socket_ids += "@@".join(map(lambda pref: pref, prefixes))
                     dumped_socket_ids += "@"
+                    
 
                 else:
                     logging.debug(f"{threading.current_thread().name} Not all sockets dumped, investigate")
@@ -394,7 +408,7 @@ class ThreadedServer(object):
 
                 timeDelta = time.time() - timeStarted
 
-                metrics_logger_checkpoint = setup_logger('metrics_logger_checkpoint', 'metrics_logfile.log')
+                metrics_logger_checkpoint = setup_logger('metrics_logger_checkpoint', logs_path)
                 metrics_logger_checkpoint.info(f'Checkpoint time for {len(migrated_sockets_fds)} connections (parallel): {timeDelta}')
             
             # with self.lock:
@@ -494,13 +508,17 @@ class ThreadedServer(object):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-ip", "--ip", dest = "ip", help = "Use a defined IP")
+    parser.add_argument("-logsPath", "--logsPath", dest = "logs_path", help = "Define a path for logs storage")
     options = parser.parse_args()
 
     return options
 
 def main():
+    global logs_path
+
     options = get_args()
     host = options.ip
+    logs_path = options.logs_path
     
     threads = 4
     ThreadedServer(host=host, port=PORT, threads=threads).listen()

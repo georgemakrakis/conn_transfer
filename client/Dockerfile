@@ -28,4 +28,6 @@ COPY client/client1_threading.py /root/client1_threading.py
 
 COPY client/netcat_client_multi.py /root/netcat_client_multi.py
 
+COPY load-balancer/run_client.sh /root/run_client.sh
+
 # EXPOSE 8080

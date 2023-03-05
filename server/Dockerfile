@@ -76,5 +76,8 @@ RUN mkdir /root/single/dumped_connections
 RUN mkdir /root/single/simple_server_flask_gunicorn
 ADD server/simple_server_flask_gunicorn /root/single/simple_server_flask_gunicorn
 
+COPY load-balancer/run_server.sh /root/run_server.sh
+COPY load-balancer/run_dump.sh /root/run_dump.sh
+
 
 EXPOSE 8080

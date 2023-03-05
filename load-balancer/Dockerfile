@@ -32,6 +32,8 @@ COPY load-balancer/python_load_balancer.py /root/python_load_balancer.py
 COPY load-balancer/python_load_balancer_threading.py /root/python_load_balancer_threading.py
 COPY load-balancer/run_server_3_docker.sh /root/run_server_3_docker.sh
 
+COPY load-balancer/run_LB.sh /root/run_LB.sh
+
 RUN chmod +x /root/run_server_3_docker.sh
 
 WORKDIR /root

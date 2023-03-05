@@ -1,6 +1,6 @@
 # From: https://gist.github.com/zhouchangxun/5750b4636cc070ac01385d89946e0a7b
 
-import sys, logging, re, subprocess, os
+import sys, logging, re, subprocess, os, argparse
 import socket
 import select
 import random, uuid
@@ -36,8 +36,8 @@ IPs = ["172.20.0.4", "172.20.0.3", "172.20.0.7"]
 # Should that be a list inside the class?
 # client_socket = None
 
-# logging.basicConfig(filename='server.log', filemode='w', level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(filename='LB_server.log', filemode='w', level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
 # How many containers have been spawned eventually. We start from one, and the should be an even number.
@@ -45,6 +45,8 @@ SPAWNED_CONTAINERS = 1
 
 ITER = cycle(SERVER_POOL)
 MIG_ITER = cycle(MIG_SERVER_POOL) # This one is slided one step to the right as above
+
+logs_path = ""
 
 def round_robin(iter):
     # round_robin([A, B, C, D]) --> A B C D A B C D A B C D ...
@@ -82,7 +84,7 @@ def launch_containers(new_container):
     # subprocess.call(docker_exec_list)
 
     # docker_exec_list = ["docker", "exec", "server_2", "bash", "-c", "'/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'"]
-    docker_exec_list_2 = ["docker", "exec", container_name, "/bin/bash", "/root/run_server.sh", f"172.20.0.{IP_third_octet}"]
+    docker_exec_list_2 = ["docker", "exec", container_name, "/bin/bash", "/root/run_server.sh", f"172.20.0.{IP_third_octet}", f"/migvolume1/logs/{container_name}.log"]
     subprocess.call(args=docker_exec_list_2)
 
     # TODO: Here we should also launch the C program that dumps the sockets.
@@ -259,6 +261,8 @@ class LoadBalancer(object):
 
         global SPAWNED_CONTAINERS
 
+        global logs_path
+
         socket_id = None
 
         new_sock = None
@@ -332,6 +336,8 @@ class LoadBalancer(object):
 
             # # timeDelta = time.time() - timeStarted
             # logging.info(f"{threading.current_thread().name} TIME TO RUN CONTAINERS {timeDelta}")
+            # metrics_logger_SPAWN = setup_logger('metrics_logger_SPAWN', logs_path)
+            # metrics_logger_SPAWN.info(f'TIME TO RUN {SPAWNED_CONTAINERS} CONTAINERS: {timeDelta}')
 
             # return
              
@@ -421,7 +427,7 @@ class LoadBalancer(object):
 
                 if (all(result == 1 for result in results)):
                     timeDelta = time.time() - timeStarted
-                    metrics_logger_restore = setup_logger('metrics_logger_restore', 'metrics_restore_logfile.log')
+                    metrics_logger_restore = setup_logger('metrics_logger_restore', logs_path)
                     metrics_logger_restore.info(f'Restore time for {dumped_sockets_num} connection (parallel): {timeDelta}')
 
                     # self.migration_counter += 1
@@ -611,17 +617,35 @@ class LoadBalancer(object):
     #     # subprocess.call(docker_exec_list)
 
     #     # docker_exec_list = ["docker", "exec", "server_2", "bash", "-c", "'/usr/bin/python single/echo_threading.py --ip=172.20.0.4 &'"]
-    #     docker_exec_list_2 = ["docker", "exec", container_name, "/bin/bash", "/root/run_server.sh", f"172.20.0.{IP_third_octet}"]
+    #     docker_exec_list_2 = ["docker", "exec", container_name, "/bin/bash", "/root/run_server.sh", f"172.20.0.{IP_third_octet}", f"/migvolume1/logs/{container_name}.log"]
     #     subprocess.call(args=docker_exec_list_2)
 
     #     # TODO: Here we should also launch the C program that dumps the sockets.
     #     # logging.info(f"Container {new_container}: {time.time()-timeStarted}")
     #     return
 
-if __name__ == '__main__':
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-logsPath", "--logsPath", dest = "logs_path", help = "Define a path for logs storage")
+    options = parser.parse_args()
+
+    return options
+
+
+def main():
+
+    global logs_path
+
+    options = get_args()
+    logs_path = options.logs_path
+
     try:
         # LoadBalancer('localhost', 5555, 'round robin').start()
         LoadBalancer('172.20.0.2', 80, 'round robin').start()
     except KeyboardInterrupt:
         print("Ctrl C - Stopping load_balancer")
         sys.exit(1)
+
+if __name__ == '__main__':
+    main()
