@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # for i in {1..1000}
-# for i in {1..100}
-for i in {1..2}
+for i in {1..100}
+# for i in {1..2}
 do
     echo "LOOP {$i}"
     # Start Containers
