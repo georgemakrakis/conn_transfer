@@ -28,8 +28,8 @@ do
     docker exec server_3 /bin/bash /root/run_dump.sh
 
     # # Capture packets at the client side and at the LB
-    # docker run -d --rm --net=container:client_1 -v $PWD/tcpdump/client_1:/tcpdump --name tcpdump_1 kaazing/tcpdump
-    # docker run -d --rm --net=container:load-balancer -v $PWD/tcpdump/load-balancer:/tcpdump --name tcpdump_2 kaazing/tcpdump
+    docker run -d --rm --net=container:client_1 -v $PWD/tcpdump/client_1:/tcpdump --name tcpdump_1 kaazing/tcpdump
+    docker run -d --rm --net=container:load-balancer -v $PWD/tcpdump/load-balancer:/tcpdump --name tcpdump_2 kaazing/tcpdump
 
     # # Running the client
     docker exec client_1 /bin/bash /root/run_client.sh
@@ -44,8 +44,8 @@ do
     # /bin/bash ./delete_containers.sh
 
     # Change the name of the PCAPs so they will not be overwritten
-    # mv tcpdump/client_1/tcpdump.pcap tcpdump/client_1/tcpdump_$i.pcap
-    # mv tcpdump/load-balancer/tcpdump.pcap tcpdump/load-balancer/tcpdump_$i.pcap
+    mv tcpdump/client_1/tcpdump.pcap tcpdump/client_1/tcpdump_$i.pcap
+    mv tcpdump/load-balancer/tcpdump.pcap tcpdump/load-balancer/tcpdump_$i.pcap
 
     docker stop tcpdump_1 && docker stop tcpdump_2
 
