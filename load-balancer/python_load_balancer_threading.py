@@ -4,6 +4,7 @@ import sys, logging, re, subprocess, os, argparse
 import socket
 import select
 import random, uuid
+import traceback
 from itertools import cycle
 import threading, multiprocessing
 
@@ -36,8 +37,8 @@ IPs = ["172.20.0.4", "172.20.0.3", "172.20.0.7"]
 # Should that be a list inside the class?
 # client_socket = None
 
-# logging.basicConfig(filename='LB_server.log', filemode='w', level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(filename='LB_server.log', filemode='w', level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 # logging.basicConfig(level=logging.INFO)
 
 # How many containers have been spawned eventually. We start from one, and the should be an even number.
@@ -45,13 +46,6 @@ SPAWNED_CONTAINERS = 1
 
 ITER = cycle(SERVER_POOL)
 MIG_ITER = cycle(MIG_SERVER_POOL) # This one is slided one step to the right as above
-
-READ_ONLY = ( select.POLLIN |
-              select.POLLPRI |
-              select.POLLHUP |
-              select.POLLERR )
-READ_WRITE = READ_ONLY | select.POLLOUT
-
 
 logs_path = ""
 
@@ -153,11 +147,6 @@ class LoadBalancer(object):
         # This will be a match of UUIDs and socket objects
         self.client_sockets_track = dict()
 
-        self.poller = select.poll()
-        self.poller.register(self.cs_socket)
-
-        self.fd_to_socket = { self.cs_socket.fileno(): self.cs_socket,}
-
         # we will assign and use the migration ports based on the number of servers.
         # for index, server in enumerate(MIG_SERVER_POOL):
         #     MIG_PORTS.append(4000+index)
@@ -166,76 +155,65 @@ class LoadBalancer(object):
 
     def start(self):
         while True:
-            # read_list, write_list, exception_list = select.select(self.sockets, [], [])
-            # for sock in read_list:
-            evts = self.poller.poll(5000)
-            for sock_fd, evt in evts:
-                
-                sock = self.fd_to_socket[sock_fd]
+            read_list, write_list, exception_list = select.select(self.sockets, [], [])
+            for sock in read_list:
+                # new connection
+                if sock == self.cs_socket:
+                    logging.info('='*40+'flow start'+'='*39)
+                    client_socket, client_addr = self.cs_socket.accept()
+                    thread = threading.Thread(target=self.on_accept, args=(client_socket, client_addr))
+                    thread.start()
+                    thread.join()
+                    # self.on_accept()
+                    break
+                # incoming message from a client socket
+                else:
+                    try:
+                        # In Windows, sometimes when a TCP program closes abruptly,
+                        # a "Connection reset by peer" exception will be thrown
+                        # data = sock.recv(4096) # buffer size: 2^n
+                        data = sock.recv(1073741824) # 1 GB 
+                        # data = sock.recv(16)
+                        if data:
+                            if sock.getpeername()[0] not in IPs:
+                                # We add the UUID only to the clients, this wha we want to track.
+                                thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
+                                thread.start()
+                                thread.join()
+                                # self.on_recv(sock, data)
+                            else:
+                                logging.debug("=====IN=======")
+                                thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
+                                # thread = threading.Thread(target=self.on_recv, args=(sock, data, None))
+                                thread.start()
+                                # thread.join()
+                        # else:
+                            # # TODO: we might want to add the backend server connections
+                            # # to the dict() as well
+                            # if sock.getpeername()[0] not in IPs:
+                            #     thread = threading.Thread(target=self.on_close, args=(sock,))
+                            #     # self.clients_threads[sock] = thread
+                            #     thread.start()
+                            #     thread.join()
+                            #     break
+                            #     # self.on_close(sock)
+                            #     # break
 
-                if evt and (select.POLLIN | select.POLLPRI):
-                    # new connection
-                    # if sock == self.cs_socket:
-                    if sock is self.cs_socket:
-                        logging.info('='*40+'flow start'+'='*39)
-                        client_socket, client_addr = self.cs_socket.accept()
-
-                        self.fd_to_socket[client_socket.fileno()] = client_socket
-                        self.poller.register(client_socket, READ_ONLY)
-
-                        thread = threading.Thread(target=self.on_accept, args=(client_socket, client_addr))
-                        thread.start()
-                        thread.join()
-                        # self.on_accept()
-                        break
-                    # incoming message from a client socket
-                    else:
-                        try:
-                            # In Windows, sometimes when a TCP program closes abruptly,
-                            # a "Connection reset by peer" exception will be thrown
-                            # data = sock.recv(4096) # buffer size: 2^n
-                            data = sock.recv(16)
-                            if data:
-                                self.poller.modify(sock, READ_WRITE)
-                                if sock.getpeername()[0] not in IPs:
-                                    # We add the UUID only to the clients, this wha we want to track.
-                                    thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
-                                    thread.start()
-                                    thread.join()
-                                    # self.on_recv(sock, data)
-                                else:
-                                    logging.debug("=====IN=======")
-                                    thread = threading.Thread(target=self.on_recv, args=(sock, data, uuid.uuid4()))
-                                    # thread = threading.Thread(target=self.on_recv, args=(sock, data, None))
-                                    thread.start()
-                                    # thread.join()
                             # else:
-                                # # TODO: we might want to add the backend server connections
-                                # # to the dict() as well
-                                # if sock.getpeername()[0] not in IPs:
-                                #     thread = threading.Thread(target=self.on_close, args=(sock,))
-                                #     # self.clients_threads[sock] = thread
-                                #     thread.start()
-                                #     thread.join()
-                                #     break
-                                #     # self.on_close(sock)
-                                #     # break
-
-                                # else:
-                                #     self.on_close(sock)
-                                #     break
-                        except ConnectionResetError as ex:
-                            logging.error(f"ConnectionResetError {ex}")                        
-                            # continue
-                            break
-                        except OSError as ex:
-                            # print(f"OSError {ex}")
-                            # continue
-                            break
-                        except Exception as ex:
-                            logging.error(ex)
-                            sock.on_close(sock)
-                            break
+                            #     self.on_close(sock)
+                            #     break
+                    except ConnectionResetError as ex:
+                        logging.error(f"ConnectionResetError {ex}")                        
+                        # continue
+                        break
+                    except OSError as ex:
+                        # print(f"OSError {ex}")
+                        # continue
+                        break
+                    except Exception as ex:
+                        logging.error(ex)
+                        sock.on_close(sock)
+                        break
 
     def on_accept(self, client_socket, client_addr):
         # client_socket, client_addr = self.cs_socket.accept()
@@ -251,7 +229,7 @@ class LoadBalancer(object):
         if client_addr[0] not in IPs:
             # init a server-side socket
             ss_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            ss_socket.settimeout(0.1)
+            ss_socket.settimeout(100)
             try:
                 ss_socket.connect((server_ip, server_port))
                 logging.info(f"{threading.current_thread().name} init server-side socket: {ss_socket.getsockname()}")
@@ -334,7 +312,7 @@ class LoadBalancer(object):
             #     SPAWNED_CONTAINERS *= 2
 
             # # SPAWNED_CONTAINERS = 49
-            SPAWNED_CONTAINERS = 50
+            # SPAWNED_CONTAINERS = 24
 
             timeStarted = time.time()
             
@@ -346,7 +324,7 @@ class LoadBalancer(object):
             #     new_spawn_thread = threading.Thread(target = self.launch_containers, args = (new_container,))
             #     # checkpoint_threads.append(new_checkpoint_thread)
             #     new_spawn_thread.start()
-            #     new_spawn_thread.join()
+            #     # new_spawn_thread.join()
 
             # try:
             #     pool = multiprocessing.Pool()
@@ -359,12 +337,11 @@ class LoadBalancer(object):
             #     timeDelta = time.time() - timeStarted
 
             # # timeDelta = time.time() - timeStarted
-            # # logging.info(f"{threading.current_thread().name} TIME TO RUN CONTAINERS {timeDelta}")
+            # logging.info(f"{threading.current_thread().name} TIME TO RUN CONTAINERS {timeDelta}")
             # metrics_logger_SPAWN = setup_logger('metrics_logger_SPAWN', logs_path)
             # metrics_logger_SPAWN.info(f'TIME TO RUN {SPAWNED_CONTAINERS} CONTAINERS: {timeDelta}')
 
-            # # return
-            # os._exit(1)
+            # return
              
             socket_id = data.decode().split("$",2)[1]
 
@@ -382,7 +359,7 @@ class LoadBalancer(object):
                 # sys.exit(1)
 
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            new_sock.settimeout(0.1)
+            new_sock.settimeout(3)
             new_sock.bind(('172.20.0.2', new_port))
             new_sock.connect((sock.getpeername()[0], 80))
 
@@ -426,6 +403,8 @@ class LoadBalancer(object):
 
             socket_ids = re.findall("\\$(.+?)\\$", data.decode())
             dumped_file_pref = re.findall("\\@(.+?)\\@", data.decode())
+
+            # logging.debug(f"{threading.current_thread().name} DUMP FILE PREF: {dumped_file_pref}")
 
             # socket_id = data.decode().split("$",2)[1]
             dumped_sockets_num = len(socket_ids)
@@ -590,16 +569,20 @@ class LoadBalancer(object):
             new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
             # NOTE: Use the existing round robin to move to the next server that we want to migrate to.
-            new_sock.settimeout(0.1)
+            new_sock.settimeout(100)
             new_sock.connect(next_server)
             
-            logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
+            # logging.debug(f"{threading.current_thread().name} New {new_sock.getsockname()} with {new_sock.getpeername()}")
 
             self.sockets.append(new_sock)
             self.sockets.append(sock)
 
             self.flow_table[new_sock] = sock
             self.flow_table[sock] = new_sock
+
+            # logging.info(f"LEN SOCK IDS {len(socket_ids)}")
+            # logging.info(f"DUMPED SOCK {dumped_sock}")
+            # logging.info(f"LEN DUMPED FILE PREF {len(dumped_file_pref)}")
 
             # NOTE: This is a naive way to send a second signal to the entity that will retrieve
             # the migration data (can be anything, just make two distinct operations, dump/restore)
@@ -609,21 +592,21 @@ class LoadBalancer(object):
             # NOTE: We do not go to the if statements below here since we have to do that recursively for all the dumped sockets.
             remote_socket = new_sock
             remote_socket.send(f"{mig_data.decode()}".encode())
-            logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
+            # logging.info(f"sending packets: {remote_socket.getsockname()} ==> {remote_socket.getpeername()}, data: {mig_data}")
 
             results.append(1)
         except Exception as e:
             logging.error(f"Connection_Restore {e}")
+            # logging.error(f"Connection_Restore {traceback.format_exc()}")
             results.append(-1)
 
         return
 
     # def launch_containers(self, new_container):
+    #     # timeStarted = time.time()
+
     #     container_name = f"server_{new_container+1}"
     #     IP_third_octet = 3 + new_container
-
-    #     if IP_third_octet == 100:
-    #         return 1
 
     #     # The commands to start the creation of a new container
 
@@ -633,6 +616,11 @@ class LoadBalancer(object):
     #             "--hostname", container_name, "server"]
     #     # subprocess.call(args=docker_run_cmd_list, stdin="/dev/null", stdout="/dev/null", stderr="/dev/null", shell=False)
     #     subprocess.call(args=docker_run_cmd_list)
+    #     # try:
+    #     #     subprocess.check_call(args=docker_run_cmd_list)
+    #     # except subprocess.CalledProcessError:
+            
+        
 
     #     # docker_exec_list = ["docker", "exec", "server_2", "service", "ssh", "start"]
     #     # subprocess.call(docker_exec_list)
@@ -642,6 +630,7 @@ class LoadBalancer(object):
     #     subprocess.call(args=docker_exec_list_2)
 
     #     # TODO: Here we should also launch the C program that dumps the sockets.
+    #     # logging.info(f"Container {new_container}: {time.time()-timeStarted}")
     #     return
 
 
