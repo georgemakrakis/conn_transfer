@@ -35,12 +35,6 @@ migration_signal_sent = False
 
 logs_path = ""
 
-READ_ONLY = ( select.POLLIN |
-              select.POLLPRI |
-              select.POLLHUP |
-              select.POLLERR )
-READ_WRITE = READ_ONLY | select.POLLOUT
-
 def setup_logger(name, log_file, level=logging.INFO):
     """To setup as many loggers as you want"""
 
@@ -60,7 +54,6 @@ class ThreadedServer(object):
             self.port = port
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.sock.bind((self.host, self.port))
 
             # Say we can handle N-threads plus the main thread
@@ -73,11 +66,6 @@ class ThreadedServer(object):
             self.fds = threading.local() 
 
             self.last_fd = None
-
-            self.poller = select.poll()
-            self.poller.register(self.sock)
-
-            self.fd_to_socket = { self.sock.fileno(): self.sock,}
 
             # self.migration_signal_sent = False
             # self.migration_signal_sent = threading.local()
@@ -98,7 +86,7 @@ class ThreadedServer(object):
             logging.debug(f"SEND FDS: {e}")
 
     def listen(self):
-        # self.sock.listen(5000)
+        # self.sock.listen(100)
         self.sock.listen()
         logging.info("Listening on port %s ..." % PORT)
         
@@ -108,31 +96,54 @@ class ThreadedServer(object):
         # migration_signal_sent.value = False
 
         while True:
-            evts = self.poller.poll(5000)
-            for sock_fd, evt in evts:
-                
-                sock = self.fd_to_socket[sock_fd]
+            logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}")
+            # logging.debug(f"{threading.current_thread().name}  Active Thread Count 1: {self.executor._work_queue.qsize()}")
+            conn, addr = self.sock.accept()
+            conn.settimeout(100)
 
-                if evt and (select.POLLIN | select.POLLPRI):
-                    # new connection
-                    # if sock == self.cs_socket:
-                    if sock is self.sock:
+            # print(f"Connected by {addr}")
 
-                        logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}")
-                        # logging.debug(f"{threading.current_thread().name}  Active Thread Count 1: {self.executor._work_queue.qsize()}")
-                        conn, addr = self.sock.accept()
-                        conn.settimeout(100)
-                        # conn.settimeout(2)
+            # # TODO each one of these ports should be read from a config file along with the LB IP and current server IP.
+            # if (self.migration_signal_sent) and (conn.getpeername()[1] == 4000):
+            # # if self.migration_signal_sent:
+            #     # NOTE: could that be with thread?
+            #     # new_thread = threading.Thread(target = self.listenToClient_mig, args = (conn,addr))
+            #     # new_thread.start()
 
-                        self.fd_to_socket[conn.fileno()] = conn
-                        self.poller.register(conn, READ_ONLY)
+            #     logging.debug(f"{threading.current_thread().name} ++++++++++ {self.fds.value}")
 
-                        
-                        new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value))
-                        new_thread.start()
-                        # new_thread.join()
+            #     self.listenToClient_mig(conn, addr, self.fds.value)
 
-            
+
+            #     # TODO: Here we should release the migration_signal_sent 
+            #     # but we also need to kill the rest of threads 
+            #     # so the next contidion will not be triggered again.
+            #     self.migration_signal_sent = False
+
+            #     continue
+
+            # TODO: Should if not accepting more, be putting the tasks in a queue and execute them later?
+            # if threading.active_count() <= self.threads:
+            # new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value, self.migration_signal_sent.value))
+            new_thread = threading.Thread(target = self.listenToClient, args = (conn,addr, self.fds.value))
+            new_thread.start()
+
+            # NOTE: That is an arbitrary condition for simple testing, 
+            # can be somethine else like the volume of traffic that triggers the migration
+            # elif (threading.active_count() > self.threads) and (not self.migration_signal_sent): # Now we send the migration condition signal
+
+            #     logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
+            #     migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            #     migration_signal_sock.connect(("172.20.0.2", 80))
+            #     migration_signal_sock.send("threads_full\n".encode())
+
+            #     migration_signal_sock.close()
+            #     self.migration_signal_sent = True
+            #     continue
+            #     # break
+
+
+            # self.executor.submit(self.listenToClient, conn, addr)
 
     def handle_data(self, conn, data, addr, fds):
     # def handle_data(self, conn, data, addr, fds, migration_signal_sent):
@@ -162,9 +173,6 @@ class ThreadedServer(object):
                 # https://alibaba-cloud.medium.com/detailed-explanation-and-examples-of-the-suspension-recovery-and-exit-of-python-threads-d4c077509461 
 
                 logging.debug(f"{threading.current_thread().name}  Active Thread Count: {threading.active_count()}, reached capacity, time to migrate")
-                
-                # time.sleep(0.5)
-
                 migration_signal_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 migration_signal_sock.connect(("172.20.0.2", 80))
                 migration_signal_sock.send(f"threads_full${socket_id}$\n".encode())
@@ -283,6 +291,8 @@ class ThreadedServer(object):
             # NOTE: Dump a random half of the sockets
             # migrated_sockets_fds = random.sample(fds, round(len(fds)/2))
 
+            fds.sort(key = lambda fd: fd[1])
+
             # Lists with first and second half of connections.
             migrated_sockets_fds_1 = fds [0:round(len(fds)/2)]
             migrated_sockets_fds_2 = fds [round(len(fds)/2):len(fds)]
@@ -290,8 +300,8 @@ class ThreadedServer(object):
             # migrated_sockets_fds_1.sort(key = lambda fd: fd[1])
             # migrated_sockets_fds_2.sort(key = lambda fd: fd[1])
 
-            # logging.debug(f"HALF SELECTION OF FDs: {migrated_sockets_fds_1}")
-            # logging.debug(f"OTHER HALF SELECTION OF FDs: {migrated_sockets_fds_2}")
+            logging.debug(f"HALF SELECTION OF FDs: {migrated_sockets_fds_1}")
+            logging.debug(f"OTHER HALF SELECTION OF FDs: {migrated_sockets_fds_2}")
 
             results = []
 
@@ -307,6 +317,7 @@ class ThreadedServer(object):
             
             # both_halves = [migrated_sockets_fds_1, migrated_sockets_fds_2]
             old_dumped_sockets_num = ""
+            prev_pref = []
             for index, migrated_sockets_fds in enumerate([migrated_sockets_fds_1, migrated_sockets_fds_2]):
                 timeStarted = time.time()
 
@@ -335,17 +346,19 @@ class ThreadedServer(object):
                     dumped_socket_ids += "$$".join(map(lambda fd: fd[0], migrated_sockets_fds))
                     dumped_socket_ids += "$"
 
-                    # entries = os.scandir("/migvolume1/")
-                    # prefixes = []
-                    # for entry in entries:
-                    #     pref = (entry.name.split('_')[0])
-                    #     if pref not in prefixes:
-                    #         prefixes.append(pref)
+                    entries = os.scandir("/migvolume1/")
+                    prefixes = []
+                    for entry in entries:
+                        pref = (entry.name.split('_')[0])
+                        if pref not in prefixes and pref not in prev_pref:
+                            prefixes.append(pref)
 
                     dumped_socket_ids += "@"
-                    dumped_socket_ids += "@@".join(map(lambda fd: str(fd[1] + 1 - 4), migrated_sockets_fds))
-                    # dumped_socket_ids += "@@".join(map(lambda pref: pref, prefixes))
+                    # dumped_socket_ids += "@@".join(map(lambda fd: str(fd[1] + 1 - 4), migrated_sockets_fds))
+                    dumped_socket_ids += "@@".join(map(lambda pref: pref, prefixes))
                     dumped_socket_ids += "@"
+
+                    prev_pref = prefixes
                     
 
                 else:
@@ -356,7 +369,7 @@ class ThreadedServer(object):
                 # dumped_socket_ids += f"${socket_id}$"
 
                 # self.lock.release()
-                # logging.debug(f"{threading.current_thread().name} Sent FDs")
+                logging.debug(f"{threading.current_thread().name} Sent FDs")
 
                 # logging.debug(f"{threading.current_thread().name}  Active Thread Count 3: {self.executor._work_queue.qsize()}")
 
@@ -371,7 +384,7 @@ class ThreadedServer(object):
 
                 # subprocess.call(rsync_cmd_list)
 
-                # logging.info("Copied dumped files...")
+                logging.info("Copied dumped files...")
                 # print(f"FD No after: {conn.fileno()}")
 
                 # TODO: What if we do not send data back but we just stop the from beeing sent
@@ -385,7 +398,7 @@ class ThreadedServer(object):
 
                 # data = f"{data}@{dumped_sockets_num}@\n".encode()
                 data = f"{data}\n".encode()
-                # logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
+                logging.debug(f"{threading.current_thread().name}  WILL SEND: {data}")
                 conn.sendall(data)
 
                 socket_id = dumped_socket_ids
@@ -427,15 +440,16 @@ class ThreadedServer(object):
     # def connection_checkpoint(socket_id, fd):
         try:   
             # if fd[1] != conn.fileno(): # We do not want the current socket to be migrated.
-            # logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd[1]}")
+            logging.debug(f"{threading.current_thread().name} DUMPING FD No: {fd[1]}")
             client_unix = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)    
             client_unix.connect("/tmp/test")
             # dummy_thread = ThreadedServer()
             self.send_fds(client_unix, b"AAAAA", [fd[1]])
             client_unix.close()
 
-            to_close = socket.fromfd(fd[1]-1, socket.AF_INET, socket.SOCK_STREAM)
-            to_close.close()
+            # NOTE: DO we have to close them?
+            # to_close = socket.fromfd(fd[1]-1, socket.AF_INET, socket.SOCK_STREAM)
+            # to_close.close()
 
             results.append(1)
 
@@ -460,7 +474,7 @@ class ThreadedServer(object):
         # fds.append(conn.fileno())
         # fds.value = conn.fileno()
 
-        # logging.debug(f"{threading.current_thread().name} +++++++++++++++++++ FD No: {fds}")
+        logging.debug(f"{threading.current_thread().name} +++++++++++++++++++ FD No: {fds}")
 
         data = bytes()
         
@@ -474,9 +488,9 @@ class ThreadedServer(object):
                 # logging.debug(f"{threading.current_thread().name}  Data so far.. {data} with len {len(data)}")
                 if not data_recv:
                     logging.warning("NO DATA RECV")
+                    conn.shutdown(socket.SHUT_RDWR)
+                    conn.close()
                     break
-
-                self.poller.modify(conn, READ_WRITE)
 
                 handle_data_status = self.handle_data(conn, data, addr, fds)
 

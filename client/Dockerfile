@@ -8,7 +8,7 @@ RUN apt install software-properties-common -y
 
 RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt update
-RUN apt install curl iputils-ping nano make wget ssh netcat python3.6 python3-pip python3.6-distutils -y
+RUN apt install curl iputils-ping tcpdump nano make wget ssh netcat python3.6 python3-pip python3.6-distutils -y
 
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1
 RUN update-alternatives --config python3
@@ -29,5 +29,9 @@ COPY client/client1_threading.py /root/client1_threading.py
 COPY client/netcat_client_multi.py /root/netcat_client_multi.py
 
 COPY load-balancer/run_client.sh /root/run_client.sh
+
+COPY load-balancer/tcpdump_start.sh /root/tcpdump_start.sh
+COPY load-balancer/tcpdump_stop.sh /root/tcpdump_stop.sh
+
 
 # EXPOSE 8080

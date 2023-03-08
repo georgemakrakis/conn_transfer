@@ -230,7 +230,8 @@ int main(int argc, char *argv[])
 			// char *new_uuid = produce_uuid();
 			// char *new_uuid = "";
 			char *new_uuid = malloc(200);
-			int thread_num = fd_rec[i] - 4;
+			// int thread_num = fd_rec[i] - 4;
+			int thread_num = fd_rec[i];
 			snprintf(new_uuid, 200, "%d", thread_num);
 			// printf("NEW UUID PRODUCED %s\n", new_uuid);
 

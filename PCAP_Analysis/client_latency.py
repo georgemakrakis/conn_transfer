@@ -10,8 +10,8 @@ lst = []
 pcap_AVGDelay = []
 
 # Measure the Inter-Arrival time of packets
-# directory = "/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/migration/"
-directory = "/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/no_migration/"
+# directory = "/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/migration/10"
+directory = "/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/no_migration/100"
 
 for filename in os.listdir(directory):
     f = os.path.join(directory, filename)

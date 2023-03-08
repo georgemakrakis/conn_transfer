@@ -1,5 +1,9 @@
 #!/bin/bash
 
+mkdir tcpdump
+mkdir tcpdump/client_1
+mkdir tcpdump/load-balancer
+
 # for i in {1..1000}
 # for i in {1..100}
 for i in {1..1}
@@ -7,7 +11,7 @@ do
     echo "LOOP {$i}"
     # Start Containers
     docker start load-balancer
-    docker start client_1
+    # docker start client_1
     docker start server_1
 
     # (For measuring the spwan of containers we need these commented out)
@@ -21,11 +25,10 @@ do
     docker exec server_1 /bin/bash /root/run_dump.sh
 
     # (For measuring the spwan of containers we need these commented out)
-    # docker exec server_2 /bin/bash /root/run_server.sh 172.20.0.4 /migvolume1/logs/server_2.log
-    docker exec server_2 /bin/bash /root/run_server.sh 172.20.0.4
+    docker exec server_2 /bin/bash /root/run_server.sh 172.20.0.4 /migvolume1/logs/server_2.log
     docker exec server_2 /bin/bash /root/run_dump.sh
 
-    docker exec server_3 /bin/bash /root/run_server.sh 172.20.0.5
+    docker exec server_3 /bin/bash /root/run_server.sh 172.20.0.5 /migvolume1/logs/server_3.log
     docker exec server_3 /bin/bash /root/run_dump.sh
 
     # # Capture packets at the client side and at the LB
@@ -33,12 +36,13 @@ do
     docker run -d --rm --net=container:load-balancer -v $PWD/tcpdump/load-balancer:/tcpdump --name tcpdump_2 kaazing/tcpdump
 
     # # Running the client
-    docker exec client_1 /bin/bash /root/run_client.sh
+    /bin/bash /root/run_client.sh
 
     sleep 10
 
     # # Stopping all containers
-    docker stop server_1 && docker stop server_2 && docker stop server_3 && docker stop client_1 && docker stop load-balancer
+    docker stop server_1 && docker stop server_2 && docker stop server_3 && docker stop load-balancer
+    # docker stop server_1 && docker stop server_2 && docker stop server_3 && docker stop client_1 && docker stop load-balancer
     # docker stop server_1 && docker stop client_1 && docker stop load-balancer
 
     # Only for container spawning
