@@ -27,6 +27,7 @@ COPY client/slowloris/slowloris.py /root/slowloris.py
 COPY client/client1_threading.py /root/client1_threading.py
 
 COPY client/netcat_client_multi.py /root/netcat_client_multi.py
+COPY client/orch_netcat_client_multi.py /root/orch_netcat_client_multi.py
 
 COPY load-balancer/run_client.sh /root/run_client.sh
 

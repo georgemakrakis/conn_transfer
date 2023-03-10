@@ -35,7 +35,7 @@ do
     # # Running the client
     docker exec client_1 /bin/bash /root/run_client.sh
 
-    sleep 10
+    sleep 2
 
     # # Stopping all containers
     docker stop server_1 && docker stop server_2 && docker stop server_3 && docker stop client_1 && docker stop load-balancer
