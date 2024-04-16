@@ -9,9 +9,12 @@ lst = []
 
 pcap_AVGDelay = []
 
+exp = 30
+
 # Measure the Inter-Arrival time of packets
-directory = "/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/migration/20"
-# directory = "/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/no_migration/200"
+directory = f"/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/migration/{exp}"
+# directory = f"/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/migration/{exp}_2"
+# directory = f"/mnt/c/Users/georg/source/repos/conn_transfer/tcpdump/client_1/no_migration/{exp}"
 
 for filename in os.listdir(directory):
     f = os.path.join(directory, filename)
@@ -67,7 +70,7 @@ for filename in os.listdir(directory):
                     pass
 
         # print(packet_port_startTime)
-        # print(packet_port_latency)
+        print(packet_port_latency)
 
         pcap_AVGDelay.append((f, (sum(n for _, n in packet_port_latency)/len(packet_port_latency))))\
         

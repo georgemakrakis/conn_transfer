@@ -186,12 +186,28 @@ int main()
                 handle_error ("Failed to connect to socket");
 
 
-	send_fd(listfd, &(so_rst->fd), 1);
+	// send_fd(listfd, &(so_rst->fd), 1);
+	int so_rst_fd = libsoccr_get_sk_fd(so_rst);
+	send_fd(listfd, &so_rst_fd, 1);
 	printf("Sent FD \n");
 
 	//sleep(20);
 	
 	libsoccr_resume(so_rst);
 	printf("Resumed\n");
-	printf("Sock Descr: %d\n", so_rst->fd);
+	// printf("Sock Descr: %d\n", so_rst->fd);
+	printf("Sock Descr: %d\n",so_rst_fd);
+	unsigned flags = libsoccr_get_sk_flags(so_rst);
+	printf("Sock Flags: %d\n",so_rst_fd);
+
+	char *recv_queue = libsoccr_get_sk_recv_queue(so_rst);
+	printf("Sock recv_queue: %s\n",recv_queue);
+
+	char *send_queue = libsoccr_get_sk_send_queue(so_rst);
+	printf("Sock send_queue: %s\n",send_queue);
+
+
+	union libsoccr_addr *so_rst_src_addr = libsoccr_get_sk_src_addr(so_rst);
+	union libsoccr_addr *so_rst_dst_addr = libsoccr_get_sk_dst_addr(so_rst);
+
 }

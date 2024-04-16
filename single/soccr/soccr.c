@@ -107,14 +107,38 @@ static int tcp_repair_off(int fd)
 	return ret;
 }
 
-// struct libsoccr_sk {
-// 	int fd;
-// 	unsigned flags;
-// 	char *recv_queue;
-// 	char *send_queue;
-// 	union libsoccr_addr *src_addr;
-// 	union libsoccr_addr *dst_addr;
-// };
+struct libsoccr_sk {
+	int fd;
+	unsigned flags;
+	char *recv_queue;
+	char *send_queue;
+	union libsoccr_addr *src_addr;
+	union libsoccr_addr *dst_addr;
+};
+
+int libsoccr_get_sk_fd(struct libsoccr_sk *sk) {
+   return sk->fd;
+}
+
+unsigned libsoccr_get_sk_flags(struct libsoccr_sk *sk) {
+   return sk->flags;
+}
+
+char* libsoccr_get_sk_recv_queue(struct libsoccr_sk *sk) {
+   return sk->recv_queue;
+}
+
+char* libsoccr_get_sk_send_queue(struct libsoccr_sk *sk) {
+   return sk->send_queue;
+}
+
+union libsoccr_addr* libsoccr_get_sk_src_addr(struct libsoccr_sk *sk) {
+   return sk->src_addr;
+}
+
+union libsoccr_addr* libsoccr_get_sk_dst_addr(struct libsoccr_sk *sk) {
+   return sk->dst_addr;
+}
 
 #define SK_FLAG_FREE_RQ 0x1
 #define SK_FLAG_FREE_SQ 0x2
